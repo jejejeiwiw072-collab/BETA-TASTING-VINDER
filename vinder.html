@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VidFinder UI</title>
+    <style>
+        :root { background: #121212; color: #e0e0e0; font-family: system-ui; }
+        body { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .box { background: #1e1e1e; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #333; }
+        input, button { width: 100%; padding: 12px; margin-top: 10px; box-sizing: border-box; border-radius: 6px; border: 1px solid #444; background: #2a2a2a; color: white; }
+        button { background: #007bff; color: white; font-weight: bold; cursor: pointer; border: none; }
+        button:disabled { background: #555; cursor: not-allowed; }
+        .card { background: #252525; padding: 12px; margin-top: 10px; border-radius: 6px; border-left: 4px solid #007bff; }
+        #log { margin-top: 10px; font-size: 14px; color: #00ff88; }
+        .error { color: #ff4444 !important; }
+    </style>
+</head>
+<body>
+
+    <h2>VidFinder System</h2>
+
+    <div class="box">
+        <h3>🔍 Cari Video</h3>
+        <input type="text" id="keyword" placeholder="Keyword pencarian...">
+        <input type="text" id="filter" placeholder="Filter durasi (>10m, <5m, 5m-15m)">
+        <input type="number" id="limit" placeholder="Jumlah limit (default: 5)" value="5">
+        <button id="btnSearch" onclick="searchData()">Cari Sekarang</button>
+    </div>
+
+    <div class="box">
+        <h3>🔗 Download by URL</h3>
+        <input type="text" id="url" placeholder="Paste URL TikTok...">
+        <button id="btnUrl" onclick="downloadByUrl()">Download Langsung</button>
+    </div>
+
+    <div id="log">Siap mengeksekusi...</div>
+    <div id="results"></div>
+
+    <script>
+        const API = 'http://127.0.0.1:5000/api';
+
+        function setLog(msg, isError = false) {
+            const logEl = document.getElementById('log');
+            logEl.innerText = msg;
+            logEl.className = isError ? 'error' : '';
+        }
+
+        async function searchData() {
+            const keyword = document.getElementById('keyword').value;
+            const filter = document.getElementById('filter').value;
+            const limit = document.getElementById('limit').value;
+
+            if(!keyword) return setLog('Keyword tidak boleh kosong!', true);
+
+            setLog('Mencari data ke server...');
+            document.getElementById('btnSearch').disabled = true;
+            document.getElementById('results').innerHTML = '';
+
+            try {
+                const res = await fetch(`${API}/search`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ keyword, filter, limit })
+                });
+                const data = await res.json();
+
+                if(data.status === 'success') {
+                    if(data.data.length === 0) return setLog('Tidak ada hasil ditemukan.', true);
+                    setLog(`Ditemukan ${data.data.length} video.`);
+                    renderResults(data.data);
+                } else {
+                    setLog(data.msg, true);
+                }
+            } catch(e) {
+                setLog('Gagal terhubung ke API Flask.', true);
+            }
+            document.getElementById('btnSearch').disabled = false;
+        }
+
+        function renderResults(videos) {
+            const container = document.getElementById('results');
+            videos.forEach(v => {
+                const div = document.createElement('div');
+                div.className = 'card';
+                div.innerHTML = `
+                    <div style="font-size: 14px; margin-bottom: 8px;"><strong>${v.title}</strong></div>
+                    <div style="font-size: 12px; color: #aaa;">👤 ${v.channel} | ⏱️ ${v.duration}</div>
+                    <button onclick='downloadItem(this, ${JSON.stringify(v)})' style="padding: 8px; margin-top: 8px;">Download Video</button>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        async function downloadItem(btnEl, videoObj) {
+            btnEl.innerText = 'Mengunduh...';
+            btnEl.disabled = true;
+            try {
+                const res = await fetch(`${API}/download`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(videoObj)
+                });
+                const data = await res.json();
+                btnEl.innerText = data.status === 'success' ? 'Selesai' : 'Gagal';
+                setLog(data.msg, data.status !== 'success');
+            } catch(e) {
+                btnEl.innerText = 'Error';
+                setLog('Gagal terhubung ke API.', true);
+            }
+        }
+
+        async function downloadByUrl() {
+            const url = document.getElementById('url').value;
+            if(!url) return setLog('URL tidak boleh kosong!', true);
+
+            setLog('Mengunduh dari URL...');
+            document.getElementById('btnUrl').disabled = true;
+
+            try {
+                const res = await fetch(`${API}/download_url`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url })
+                });
+                const data = await res.json();
+                setLog(data.msg, data.status !== 'success');
+            } catch(e) {
+                setLog('Gagal terhubung ke API.', true);
+            }
+            document.getElementById('btnUrl').disabled = false;
+        }
+    </script>
+</body>
+</html>
+
