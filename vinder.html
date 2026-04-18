@@ -1,136 +1,453 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VidFinder UI</title>
-    <style>
-        :root { background: #121212; color: #e0e0e0; font-family: system-ui; }
-        body { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .box { background: #1e1e1e; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #333; }
-        input, button { width: 100%; padding: 12px; margin-top: 10px; box-sizing: border-box; border-radius: 6px; border: 1px solid #444; background: #2a2a2a; color: white; }
-        button { background: #007bff; color: white; font-weight: bold; cursor: pointer; border: none; }
-        button:disabled { background: #555; cursor: not-allowed; }
-        .card { background: #252525; padding: 12px; margin-top: 10px; border-radius: 6px; border-left: 4px solid #007bff; }
-        #log { margin-top: 10px; font-size: 14px; color: #00ff88; }
-        .error { color: #ff4444 !important; }
-    </style>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>VidFinder System</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@400;500;600&display=swap');
+
+  :root {
+    --bg: #0f0f0f;
+    --card: #1a1a1a;
+    --border: #2a2a2a;
+    --text: #e8e8e8;
+    --muted: #666;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --success: #16a34a;
+    --error: #dc2626;
+    --warning: #d97706;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    padding: 20px 16px 80px;
+  }
+
+  h1 {
+    font-family: 'Space Mono', monospace;
+    font-size: 22px;
+    letter-spacing: -0.5px;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  h1 span { color: var(--accent); }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px;
+    margin-bottom: 16px;
+  }
+
+  .card-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 14px;
+  }
+
+  input {
+    width: 100%;
+    background: #111;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    margin-bottom: 10px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  input:focus { border-color: var(--accent); }
+  input::placeholder { color: var(--muted); }
+
+  button {
+    width: 100%;
+    padding: 13px;
+    border: none;
+    border-radius: 8px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+  }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .btn-dl {
+    background: #1a2a1a;
+    color: #4ade80;
+    border: 1px solid #2a3a2a;
+    padding: 9px;
+    font-size: 13px;
+    border-radius: 6px;
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .btn-dl:hover { background: #22351f; }
+  .btn-dl:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Hasil search */
+  #results { margin-top: 8px; }
+
+  .video-item {
+    background: #111;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 10px;
+  }
+  .video-title {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.4;
+    margin-bottom: 6px;
+  }
+  .video-meta {
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    gap: 12px;
+    margin-bottom: 2px;
+  }
+
+  /* ===== DOWNLOAD BUBBLE ===== */
+  #dl-container {
+    position: fixed;
+    bottom: 20px;
+    left: 16px;
+    right: 16px;
+    z-index: 999;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+  }
+
+  .dl-bubble {
+    background: #1c1c1c;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+    pointer-events: all;
+    animation: slideUp 0.3s ease;
+    transition: opacity 0.4s, transform 0.4s;
+  }
+
+  .dl-bubble.fade-out {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(30px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .dl-bubble-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+  .dl-bubble-icon.loading { background: #1a2540; animation: pulse 1.2s infinite; }
+  .dl-bubble-icon.success { background: #1a2e1a; }
+  .dl-bubble-icon.error   { background: #2e1a1a; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  .dl-bubble-text { flex: 1; min-width: 0; }
+  .dl-bubble-label {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .dl-bubble-sub {
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .dl-progress {
+    height: 3px;
+    background: #2a2a2a;
+    border-radius: 2px;
+    margin-top: 8px;
+    overflow: hidden;
+  }
+  .dl-progress-bar {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    width: 0%;
+    transition: width 0.3s;
+    animation: indeterminate 1.5s infinite;
+  }
+  @keyframes indeterminate {
+    0%   { transform: translateX(-100%); width: 60%; }
+    100% { transform: translateX(200%);  width: 60%; }
+  }
+  .dl-progress-bar.done { animation: none; width: 100%; background: #4ade80; }
+  .dl-progress-bar.fail { animation: none; width: 100%; background: var(--error); }
+
+  .dl-close {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 18px;
+    width: auto;
+    padding: 4px 6px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  /* Status teks kecil */
+  .status-txt { font-size: 12px; margin-top: 8px; color: var(--muted); min-height: 18px; }
+  .status-txt.ok  { color: #4ade80; }
+  .status-txt.err { color: #f87171; }
+</style>
 </head>
 <body>
 
-    <h2>VidFinder System</h2>
+<h1>🎬 Vid<span>Finder</span></h1>
 
-    <div class="box">
-        <h3>🔍 Cari Video</h3>
-        <input type="text" id="keyword" placeholder="Keyword pencarian...">
-        <input type="text" id="filter" placeholder="Filter durasi (>10m, <5m, 5m-15m)">
-        <input type="number" id="limit" placeholder="Jumlah limit (default: 5)" value="5">
-        <button id="btnSearch" onclick="searchData()">Cari Sekarang</button>
-    </div>
+<!-- SEARCH CARD -->
+<div class="card">
+  <div class="card-title">🔍 Cari Video</div>
+  <input id="kw" type="text" placeholder="Keyword pencarian..." />
+  <input id="filter" type="text" placeholder="Filter durasi: >10m, <5m, 5m-15m" />
+  <input id="limit" type="number" value="5" min="1" max="50" />
+  <button class="btn-primary" id="btn-search" onclick="doSearch()">Cari Sekarang</button>
+  <div class="status-txt" id="search-status"></div>
+  <div id="results"></div>
+</div>
 
-    <div class="box">
-        <h3>🔗 Download by URL</h3>
-        <input type="text" id="url" placeholder="Paste URL TikTok...">
-        <button id="btnUrl" onclick="downloadByUrl()">Download Langsung</button>
-    </div>
+<!-- DOWNLOAD URL CARD -->
+<div class="card">
+  <div class="card-title">🔗 Download by URL</div>
+  <input id="dl-url" type="text" placeholder="https://vm.tiktok.com/..." />
+  <button class="btn-primary" id="btn-dlurl" onclick="doDownloadUrl()">Download Langsung</button>
+  <div class="status-txt" id="url-status"></div>
+</div>
 
-    <div id="log">Siap mengeksekusi...</div>
-    <div id="results"></div>
+<!-- DOWNLOAD BUBBLE CONTAINER -->
+<div id="dl-container"></div>
 
-    <script>
-        const API = 'http://127.0.0.1:5000/api';
+<script>
+  // ===== BUBBLE SYSTEM =====
+  function createBubble(title) {
+    const wrap = document.getElementById('dl-container');
+    const el = document.createElement('div');
+    el.className = 'dl-bubble';
+    el.innerHTML = `
+      <div class="dl-bubble-icon loading">⬇️</div>
+      <div class="dl-bubble-text">
+        <div class="dl-bubble-label">${title}</div>
+        <div class="dl-bubble-sub">Mengunduh...</div>
+        <div class="dl-progress"><div class="dl-progress-bar" id="bar-${Date.now()}"></div></div>
+      </div>
+      <button class="dl-close" onclick="closeBubble(this)">✕</button>
+    `;
+    wrap.appendChild(el);
+    const bar = el.querySelector('.dl-progress-bar');
+    return {
+      setSuccess() {
+        el.querySelector('.dl-bubble-icon').textContent = '✅';
+        el.querySelector('.dl-bubble-icon').className = 'dl-bubble-icon success';
+        el.querySelector('.dl-bubble-sub').textContent = 'Selesai — cek folder Download';
+        bar.className = 'dl-progress-bar done';
+        setTimeout(() => fadeOutBubble(el), 6000);
+      },
+      setError(msg) {
+        el.querySelector('.dl-bubble-icon').textContent = '❌';
+        el.querySelector('.dl-bubble-icon').className = 'dl-bubble-icon error';
+        el.querySelector('.dl-bubble-sub').textContent = msg || 'Gagal';
+        bar.className = 'dl-progress-bar fail';
+      }
+    };
+  }
 
-        function setLog(msg, isError = false) {
-            const logEl = document.getElementById('log');
-            logEl.innerText = msg;
-            logEl.className = isError ? 'error' : '';
-        }
+  function closeBubble(btn) {
+    const el = btn.closest('.dl-bubble');
+    fadeOutBubble(el);
+  }
 
-        async function searchData() {
-            const keyword = document.getElementById('keyword').value;
-            const filter = document.getElementById('filter').value;
-            const limit = document.getElementById('limit').value;
+  function fadeOutBubble(el) {
+    el.classList.add('fade-out');
+    setTimeout(() => el.remove(), 400);
+  }
 
-            if(!keyword) return setLog('Keyword tidak boleh kosong!', true);
+  // ===== DOWNLOAD TRIGGER =====
+  async function triggerDownload(endpoint, payload, title) {
+    const bubble = createBubble(title.length > 40 ? title.slice(0, 40) + '…' : title);
+    try {
+      const resp = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
 
-            setLog('Mencari data ke server...');
-            document.getElementById('btnSearch').disabled = true;
-            document.getElementById('results').innerHTML = '';
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.msg || `HTTP ${resp.status}`);
+      }
 
-            try {
-                const res = await fetch(`${API}/search`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ keyword, filter, limit })
-                });
-                const data = await res.json();
+      // Cek apakah response adalah file (video/mp4)
+      const ct = resp.headers.get('Content-Type') || '';
+      if (ct.includes('video') || ct.includes('octet-stream')) {
+        const blob = await resp.blob();
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        // Coba ambil nama file dari header
+        const cd   = resp.headers.get('Content-Disposition') || '';
+        const fnMatch = cd.match(/filename\*?=(?:UTF-8'')?["']?([^"';\n]+)/i);
+        a.download = fnMatch ? decodeURIComponent(fnMatch[1].trim()) : title.slice(0, 50) + '.mp4';
+        a.href = url;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        bubble.setSuccess();
+      } else {
+        const json = await resp.json();
+        if (json.status === 'error') throw new Error(json.msg);
+        bubble.setSuccess();
+      }
+    } catch (e) {
+      bubble.setError(e.message);
+    }
+  }
 
-                if(data.status === 'success') {
-                    if(data.data.length === 0) return setLog('Tidak ada hasil ditemukan.', true);
-                    setLog(`Ditemukan ${data.data.length} video.`);
-                    renderResults(data.data);
-                } else {
-                    setLog(data.msg, true);
-                }
-            } catch(e) {
-                setLog('Gagal terhubung ke API Flask.', true);
-            }
-            document.getElementById('btnSearch').disabled = false;
-        }
+  // ===== SEARCH =====
+  async function doSearch() {
+    const kw = document.getElementById('kw').value.trim();
+    if (!kw) return;
+    const btn = document.getElementById('btn-search');
+    const status = document.getElementById('search-status');
+    const resultsEl = document.getElementById('results');
 
-        function renderResults(videos) {
-            const container = document.getElementById('results');
-            videos.forEach(v => {
-                const div = document.createElement('div');
-                div.className = 'card';
-                div.innerHTML = `
-                    <div style="font-size: 14px; margin-bottom: 8px;"><strong>${v.title}</strong></div>
-                    <div style="font-size: 12px; color: #aaa;">👤 ${v.channel} | ⏱️ ${v.duration}</div>
-                    <button onclick='downloadItem(this, ${JSON.stringify(v)})' style="padding: 8px; margin-top: 8px;">Download Video</button>
-                `;
-                container.appendChild(div);
-            });
-        }
+    btn.disabled = true;
+    btn.textContent = 'Mencari...';
+    status.textContent = 'Menghubungi server...';
+    status.className = 'status-txt';
+    resultsEl.innerHTML = '';
 
-        async function downloadItem(btnEl, videoObj) {
-            btnEl.innerText = 'Mengunduh...';
-            btnEl.disabled = true;
-            try {
-                const res = await fetch(`${API}/download`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(videoObj)
-                });
-                const data = await res.json();
-                btnEl.innerText = data.status === 'success' ? 'Selesai' : 'Gagal';
-                setLog(data.msg, data.status !== 'success');
-            } catch(e) {
-                btnEl.innerText = 'Error';
-                setLog('Gagal terhubung ke API.', true);
-            }
-        }
+    try {
+      const resp = await fetch('/api/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          keyword: kw,
+          limit: parseInt(document.getElementById('limit').value) || 5,
+          filter: document.getElementById('filter').value.trim()
+        })
+      });
+      const data = await resp.json();
+      if (data.status !== 'success') throw new Error(data.msg);
 
-        async function downloadByUrl() {
-            const url = document.getElementById('url').value;
-            if(!url) return setLog('URL tidak boleh kosong!', true);
+      if (!data.data.length) {
+        status.textContent = 'Tidak ada hasil.';
+        return;
+      }
 
-            setLog('Mengunduh dari URL...');
-            document.getElementById('btnUrl').disabled = true;
+      status.textContent = `${data.data.length} video ditemukan`;
+      status.className = 'status-txt ok';
 
-            try {
-                const res = await fetch(`${API}/download_url`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url })
-                });
-                const data = await res.json();
-                setLog(data.msg, data.status !== 'success');
-            } catch(e) {
-                setLog('Gagal terhubung ke API.', true);
-            }
-            document.getElementById('btnUrl').disabled = false;
-        }
-    </script>
+      data.data.forEach(v => {
+        const div = document.createElement('div');
+        div.className = 'video-item';
+        div.innerHTML = `
+          <div class="video-title">${v.title}</div>
+          <div class="video-meta">
+            <span>⏱ ${v.duration}</span>
+            <span>👤 ${v.channel}</span>
+          </div>
+          <button class="btn-dl" onclick='downloadVideo(${JSON.stringify(v)}, this)'>
+            ⬇️ Download
+          </button>
+        `;
+        resultsEl.appendChild(div);
+      });
+    } catch (e) {
+      status.textContent = 'Error: ' + e.message;
+      status.className = 'status-txt err';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Cari Sekarang';
+    }
+  }
+
+  function downloadVideo(v, btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ Memproses...';
+    triggerDownload('/api/download', v, v.title).finally(() => {
+      btn.disabled = false;
+      btn.textContent = '⬇️ Download';
+    });
+  }
+
+  // ===== DOWNLOAD URL =====
+  async function doDownloadUrl() {
+    const url = document.getElementById('dl-url').value.trim();
+    if (!url) return;
+    const btn = document.getElementById('btn-dlurl');
+    const status = document.getElementById('url-status');
+
+    btn.disabled = true;
+    btn.textContent = 'Memproses...';
+    status.textContent = '';
+    status.className = 'status-txt';
+
+    await triggerDownload('/api/download_url', { url }, url);
+
+    btn.disabled = false;
+    btn.textContent = 'Download Langsung';
+  }
+
+  // Enter key search
+  document.getElementById('kw').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doSearch();
+  });
+  document.getElementById('dl-url').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doDownloadUrl();
+  });
+</script>
 </body>
 </html>
 
