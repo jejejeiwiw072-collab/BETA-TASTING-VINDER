@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>VidFinder System</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@400;500;600&display=swap');
+
+  :root {
+    --bg: #0f0f0f;
+    --card: #1a1a1a;
+    --border: #2a2a2a;
+    --text: #e8e8e8;
+    --muted: #666;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --success: #16a34a;
+    --error: #dc2626;
+    --warning: #d97706;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    padding: 20px 16px 80px;
+  }
+
+  h1 {
+    font-family: 'Space Mono', monospace;
+    font-size: 22px;
+    letter-spacing: -0.5px;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  h1 span { color: var(--accent); }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px;
+    margin-bottom: 16px;
+  }
+
+  .card-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 14px;
+  }
+
+  input {
+    width: 100%;
+    background: #111;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    margin-bottom: 10px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  input:focus { border-color: var(--accent); }
+  input::placeholder { color: var(--muted); }
+
+  button {
+    width: 100%;
+    padding: 13px;
+    border: none;
+    border-radius: 8px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+  }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .btn-dl {
+    background: #1a2a1a;
+    color: #4ade80;
+    border: 1px solid #2a3a2a;
+    padding: 9px;
+    font-size: 13px;
+    border-radius: 6px;
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .btn-dl:hover { background: #22351f; }
+  .btn-dl:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  #results { margin-top: 8px; }
+
+  .video-item {
+    background: #111;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 10px;
+  }
+  .video-title {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.4;
+    margin-bottom: 6px;
+  }
+  .video-meta {
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    gap: 12px;
+    margin-bottom: 2px;
+  }
+
+  /* ===== DOWNLOAD BUBBLE ===== */
+  #dl-container {
+    position: fixed;
+    bottom: 20px;
+    left: 16px;
+    right: 16px;
+    z-index: 999;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+  }
+
+  .dl-bubble {
+    background: #1c1c1c;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+    pointer-events: all;
+    animation: slideUp 0.3s ease;
+    transition: opacity 0.4s, transform 0.4s;
+  }
+
+  .dl-bubble.fade-out {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(30px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .dl-bubble-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+  .dl-bubble-icon.loading { background: #1a2540; animation: pulse 1.2s infinite; }
+  .dl-bubble-icon.success { background: #1a2e1a; }
+  .dl-bubble-icon.error   { background: #2e1a1a; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  .dl-bubble-text { flex: 1; min-width: 0; }
+  .dl-bubble-label {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .dl-bubble-sub {
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .dl-progress {
+    height: 3px;
+    background: #2a2a2a;
+    border-radius: 2px;
+    margin-top: 8px;
+    overflow: hidden;
+  }
+  .dl-progress-bar {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    width: 0%;
+    transition: width 0.3s;
+    animation: indeterminate 1.5s infinite;
+  }
+  @keyframes indeterminate {
+    0%   { transform: translateX(-100%); width: 60%; }
+    100% { transform: translateX(200%);  width: 60%; }
+  }
+  .dl-progress-bar.done { animation: none; width: 100%; background: #4ade80; }
+  .dl-progress-bar.fail { animation: none; width: 100%; background: var(--error); }
+
+  .dl-close {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 18px;
+    width: auto;
+    padding: 4px 6px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .status-txt { font-size: 12px; margin-top: 8px; color: var(--muted); min-height: 18px; }
+  .status-txt.ok  { color: #4ade80; }
+  .status-txt.err { color: #f87171; }
+
+  /* ===== TOMBOL RESOLUSI ===== */
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .card-header .card-title { margin-bottom: 0; }
+
+  .res-trigger { position: relative; display: inline-block; }
+  .res-btn {
+    width: auto;
+    padding: 5px 10px;
+    border-radius: 16px;
+    border: none;
+    background: #222;
+    color: #fff;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.5), 0 1px 3px rgba(0,0,0,0.4);
+    transition: background 0.15s;
+    min-width: 60px;
+    min-height: 30px;
+    justify-content: center;
+  }
+  .res-btn:hover { background: #2a2a2a; }
+  .res-btn .arrow { font-size: 9px; opacity: 0.5; }
+
+  .res-popup {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    background: #1e1e1e;
+    border: none;
+    border-radius: 10px;
+    overflow: hidden;
+    z-index: 9999;
+    min-width: 100px;
+    box-shadow: 0 8px 28px rgba(0,0,0,0.7), 0 2px 8px rgba(0,0,0,0.5);
+  }
+  .res-popup.open { display: block; animation: fadeIn 0.15s ease; }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .res-option {
+    padding: 11px 18px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    color: #aaa;
+    transition: background 0.1s;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .res-option:hover { background: #2a2a2a; color: #fff; }
+  .res-option.selected { color: var(--accent); }
+  .res-option.selected::after { content: '✓'; font-size: 11px; }
+  .res-divider { height: 1px; background: #2a2a2a; }
+</style>
+</head>
+<body>
+<h2 style="position: absolute; right: 20px;"> zakdev_> </h2>
+
+<h1>🎬 Vid<span>Finder</span></h1>
+
+<!-- SEARCH CARD -->
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">🔍 Cari Video</div>
+    <div class="res-trigger" id="triggerSearch">
+      <button class="res-btn" onclick="togglePopup('popupSearch')">
+        <span id="labelSearch">1080p</span>
+        <span class="arrow">▼</span>
+      </button>
+      <div class="res-popup" id="popupSearch">
+        <div class="res-option selected" onclick="pickRes('Search','1080p',this)">1080p</div>
+        <div class="res-divider"></div>
+        <div class="res-option" onclick="pickRes('Search','720p',this)">720p</div>
+        <div class="res-divider"></div>
+        <div class="res-option" onclick="pickRes('Search','480p',this)">480p</div>
+      </div>
+    </div>
+  </div>
+  <input id="kw" type="text" placeholder="Keyword pencarian..." />
+  <input id="filter" type="text" placeholder="Filter durasi: <1m, >3m (opsional)" />
+  <input id="limit" type="number" value="" min="1" max="50" placeholder="jumlah hasil(1-50)"/>
+  <button class="btn-primary" id="btn-search" onclick="doSearch()">Cari Sekarang</button>
+  <div class="status-txt" id="search-status"></div>
+  <div id="results"></div>
+</div>
+
+<!-- DOWNLOAD URL CARD -->
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">🔗 Download by URL</div>
+    <div class="res-trigger" id="triggerUrl">
+      <button class="res-btn" onclick="togglePopup('popupUrl')">
+        <span id="labelUrl">1080p</span>
+        <span class="arrow">▼</span>
+      </button>
+      <div class="res-popup" id="popupUrl">
+        <div class="res-option selected" onclick="pickRes('Url','1080p',this)">1080p</div>
+        <div class="res-divider"></div>
+        <div class="res-option" onclick="pickRes('Url','720p',this)">720p</div>
+        <div class="res-divider"></div>
+        <div class="res-option" onclick="pickRes('Url','480p',this)">480p</div>
+      </div>
+    </div>
+  </div>
+  <input id="dl-url" type="text" placeholder="https://vm.tiktok.com/..." />
+  <button class="btn-primary" id="btn-dlurl" onclick="doDownloadUrl()">Download Langsung</button>
+  <div class="status-txt" id="url-status"></div>
+</div>
+
+<!-- DOWNLOAD BUBBLE CONTAINER -->
+<div id="dl-container"></div>
+
+<script>
+  const resSelected = { Search: '1080p', Url: '1080p' };
+
+  document.addEventListener('click', function(e) {
+    ['popupSearch','popupUrl'].forEach(id => {
+      const popup = document.getElementById(id);
+      if (popup && !popup.closest('.res-trigger').contains(e.target)) {
+        popup.classList.remove('open');
+      }
+    });
+  });
+
+  function togglePopup(popupId) {
+    const popup = document.getElementById(popupId);
+    const isOpen = popup.classList.contains('open');
+    document.querySelectorAll('.res-popup').forEach(p => p.classList.remove('open'));
+    if (!isOpen) popup.classList.add('open');
+  }
+
+  function pickRes(section, res, el) {
+    resSelected[section] = res;
+    document.getElementById('label' + section).innerText = res;
+    el.closest('.res-popup').querySelectorAll('.res-option').forEach(o => o.classList.remove('selected'));
+    el.classList.add('selected');
+    el.closest('.res-popup').classList.remove('open');
+  }
+
+  // ===== BUBBLE SYSTEM =====
+  function createBubble(title) {
+    const wrap = document.getElementById('dl-container');
+    const el = document.createElement('div');
+    el.className = 'dl-bubble';
+    el.innerHTML = `
+      <div class="dl-bubble-icon loading">⬇️</div>
+      <div class="dl-bubble-text">
+        <div class="dl-bubble-label">${title}</div>
+        <div class="dl-bubble-sub">Mengunduh...</div>
+        <div class="dl-progress"><div class="dl-progress-bar" id="bar-${Date.now()}"></div></div>
+      </div>
+      <button class="dl-close" onclick="closeBubble(this)">✕</button>
+    `;
+    wrap.appendChild(el);
+    const bar = el.querySelector('.dl-progress-bar');
+    return {
+      setSuccess() {
+        el.querySelector('.dl-bubble-icon').textContent = '✅';
+        el.querySelector('.dl-bubble-icon').className = 'dl-bubble-icon success';
+        el.querySelector('.dl-bubble-sub').textContent = 'Selesai — cek folder Download';
+        bar.className = 'dl-progress-bar done';
+        setTimeout(() => fadeOutBubble(el), 6000);
+      },
+      setError(msg) {
+        el.querySelector('.dl-bubble-icon').textContent = '❌';
+        el.querySelector('.dl-bubble-icon').className = 'dl-bubble-icon error';
+        el.querySelector('.dl-bubble-sub').textContent = msg || 'Gagal';
+        bar.className = 'dl-progress-bar fail';
+      }
+    };
+  }
+
+  function closeBubble(btn) { fadeOutBubble(btn.closest('.dl-bubble')); }
+  function fadeOutBubble(el) {
+    el.classList.add('fade-out');
+    setTimeout(() => el.remove(), 400);
+  }
+
+  async function triggerDownload(endpoint, payload, title) {
+    const bubble = createBubble(title.length > 40 ? title.slice(0, 40) + '…' : title);
+    try {
+      const resp = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.msg || `HTTP ${resp.status}`);
+      }
+      const ct = resp.headers.get('Content-Type') || '';
+      if (ct.includes('video') || ct.includes('octet-stream')) {
+        const blob = await resp.blob();
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        const cd   = resp.headers.get('Content-Disposition') || '';
+        const fnMatch = cd.match(/filename\*?=(?:UTF-8'')?["']?([^"';\n]+)/i);
+        a.download = fnMatch ? decodeURIComponent(fnMatch[1].trim()) : title.slice(0, 50) + '.mp4';
+        a.href = url;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        bubble.setSuccess();
+      } else {
+        const json = await resp.json();
+        if (json.status === 'error') throw new Error(json.msg);
+        bubble.setSuccess();
+      }
+    } catch (e) {
+      bubble.setError(e.message);
+    }
+  }
+
+  async function doSearch() {
+    const kw = document.getElementById('kw').value.trim();
+    if (!kw) return;
+    const btn = document.getElementById('btn-search');
+    const status = document.getElementById('search-status');
+    const resultsEl = document.getElementById('results');
+    const resolution = resSelected['Search'];
+
+    btn.disabled = true;
+    btn.textContent = 'Mencari...';
+    status.textContent = 'Menghubungi server...';
+    status.className = 'status-txt';
+    resultsEl.innerHTML = '';
+
+    try {
+      const resp = await fetch('/api/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          keyword: kw,
+          limit: parseInt(document.getElementById('limit').value) || 5,
+          filter: document.getElementById('filter').value.trim(),
+          resolution
+        })
+      });
+      const data = await resp.json();
+      if (data.status !== 'success') throw new Error(data.msg);
+      if (!data.data.length) { status.textContent = 'Tidak ada hasil.'; return; }
+
+      status.textContent = `${data.data.length} video ditemukan`;
+      status.className = 'status-txt ok';
+
+      data.data.forEach(v => {
+        const div = document.createElement('div');
+        div.className = 'video-item';
+        div.innerHTML = `
+          <div class="video-title">${v.title}</div>
+          <div class="video-meta">
+            <span>⏱ ${v.duration}</span>
+            <span>👤 ${v.channel}</span>
+          </div>
+          <button class="btn-dl" onclick='downloadVideo(${JSON.stringify(v)}, "${resolution}", this)'>
+            ⬇️ Download
+          </button>
+        `;
+        resultsEl.appendChild(div);
+      });
+    } catch (e) {
+      status.textContent = 'Error: ' + e.message;
+      status.className = 'status-txt err';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Cari Sekarang';
+    }
+  }
+
+  function downloadVideo(v, resolution, btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ Memproses...';
+    triggerDownload('/api/download', { ...v, resolution }, v.title).finally(() => {
+      btn.disabled = false;
+      btn.textContent = '⬇️ Download';
+    });
+  }
+
+  async function doDownloadUrl() {
+    const url = document.getElementById('dl-url').value.trim();
+    if (!url) return;
+    const btn = document.getElementById('btn-dlurl');
+    const resolution = resSelected['Url'];
+
+    btn.disabled = true;
+    btn.textContent = 'Memproses...';
+    document.getElementById('url-status').textContent = '';
+
+    await triggerDownload('/api/download_url', { url, resolution }, url);
+
+    btn.disabled = false;
+    btn.textContent = 'Download Langsung';
+  }
+
+  document.getElementById('kw').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+  document.getElementById('dl-url').addEventListener('keydown', e => { if (e.key === 'Enter') doDownloadUrl(); });
+</script>
+</body>
+</html>
+
