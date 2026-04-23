@@ -95,7 +95,7 @@
     color: #fff;
   }
   .btn-primary:hover { background: var(--accent-hover); }
-  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary:disabled { background: #555; opacity: 0.8; cursor: not-allowed; }
 
   .btn-dl {
     background: #1a2a1a;
@@ -579,7 +579,11 @@
     el.value = '';
     el.focus();
     toggleClearBtn(id);
-    if (id === 'dl-url') document.getElementById('url-preview-container').style.display = 'none';
+    if (id === 'dl-url') {
+      document.getElementById('url-preview-container').style.display = 'none';
+      document.getElementById('btn-dlurl').textContent = 'Download Langsung';
+      lastUrl = '';
+    }
   }
   function toggleClearBtn(id) {
     const el = document.getElementById(id);
@@ -596,10 +600,16 @@
     if (url === lastUrl) return;
     if (!url.includes('tiktok.com')) return;
     lastUrl = url;
-    
+
     const container = document.getElementById('url-preview-container');
+    const btnDl = document.getElementById('btn-dlurl');
+
     container.style.display = 'block';
     container.innerHTML = '<div style="font-size:11px; color:var(--muted)">🔍 Mengintip link...</div>';
+
+    // Jeda tombol saat proses "Mengintip link"
+    btnDl.disabled = true;
+    btnDl.textContent = 'sedang di proses';
 
     try {
       const resp = await fetch('/api/download_url', {
@@ -623,14 +633,20 @@
             <div style="color:var(--accent); font-size:18px;">⬇️</div>
           </div>
         `;
+        // Aktifkan kembali setelah sukses 100%
+        btnDl.disabled = false;
+        btnDl.textContent = 'dowload sekarang';
       } else {
         container.style.display = 'none';
+        btnDl.disabled = false;
+        btnDl.textContent = 'Download Langsung';
       }
     } catch(e) {
       container.style.display = 'none';
+      btnDl.disabled = false;
+      btnDl.textContent = 'Download Langsung';
     }
-  }
-  ['kw', 'filter', 'limit', 'dl-url'].forEach(id => {
+  }  ['kw', 'filter', 'limit', 'dl-url'].forEach(id => {
     document.getElementById(id).addEventListener('input', () => toggleClearBtn(id));
   });
 
@@ -714,8 +730,7 @@
     }
     
     if (!vUrl) return '';
-    
-    const t = new Date().getTime();
+ const t = new Date().getTime();
     return `/api/get_video?url=${encodeURIComponent(vUrl)}&title=${encodeURIComponent(v.title)}&mode=${encodeURIComponent(resolution)}&t=${t}`;
   }
 
@@ -804,7 +819,7 @@
       bubble.setError(e.message);
     } finally {
       btn.disabled = false;
-      btn.textContent = 'Download Langsung';
+      btn.textContent = 'dowload sekarang';
     }
   }
 
@@ -813,4 +828,3 @@
   </script>
  </body>
 </html>
-
