@@ -1,11 +1,14 @@
+
 <!DOCTYPE html>
 <html lang="id">
-<head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>VidFinder System</title>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@400;500;600&display=swap');
+ <head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+  <title>
+   VidFinder System
+  </title>
+  <style>
+   @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@400;500;600&display=swap');
 
   :root {
     --bg: #0f0f0f;
@@ -110,28 +113,53 @@
   .btn-dl:hover { background: #22351f; }
   .btn-dl:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  /* Hasil search */
   #results { margin-top: 8px; }
 
   .video-item {
     background: #111;
     border: 1px solid var(--border);
     border-radius: 10px;
-    padding: 14px;
+    padding: 12px;
     margin-bottom: 10px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .video-thumb {
+    width: 85px;
+    height: 120px;
+    background: #222;
+    border-radius: 6px;
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+  .video-info {
+    flex: 1;
+    min-width: 0;
   }
   .video-title {
     font-size: 13px;
     font-weight: 600;
     line-height: 1.4;
     margin-bottom: 6px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
   .video-meta {
     font-size: 11px;
     color: var(--muted);
     display: flex;
-    gap: 12px;
-    margin-bottom: 2px;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .meta-tag {
+    background: #1a1a1a;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid #333;
   }
 
   /* ===== DOWNLOAD BUBBLE ===== */
@@ -216,15 +244,10 @@
     background: var(--accent);
     border-radius: 2px;
     width: 0%;
-    transition: width 0.3s;
-    animation: indeterminate 1.5s infinite;
+    transition: width 0.1s linear;
   }
-  @keyframes indeterminate {
-    0%   { transform: translateX(-100%); width: 60%; }
-    100% { transform: translateX(200%);  width: 60%; }
-  }
-  .dl-progress-bar.done { animation: none; width: 100%; background: #4ade80; }
-  .dl-progress-bar.fail { animation: none; width: 100%; background: var(--error); }
+  .dl-progress-bar.done { width: 100%; background: #4ade80; }
+  .dl-progress-bar.fail { width: 100%; background: var(--error); }
 
   .dl-close {
     background: none;
@@ -237,137 +260,476 @@
     flex-shrink: 0;
   }
 
-  /* Status teks kecil */
   .status-txt { font-size: 12px; margin-top: 8px; color: var(--muted); min-height: 18px; }
   .status-txt.ok  { color: #4ade80; }
   .status-txt.err { color: #f87171; }
-</style>
-</head>
-<body>
-<h2 style="position: absolute;
-right: 20px;"> zakdev_> </h2>
 
-<h1>🎬 Vid<span>Finder</span></h1>
+  /* ===== INPUT WITH CLEAR BUTTON ===== */
+  .input-wrapper {
+    position: relative;
+    width: 100%;
+    margin-bottom: 10px;
+  }
+  .input-wrapper input {
+    margin-bottom: 0;
+    padding-right: 40px;
+  }
+  .clear-btn {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted);
+    cursor: pointer;
+    display: none;
+    font-size: 18px;
+    padding: 5px;
+    user-select: none;
+    line-height: 1;
+  }
+  .clear-btn:hover { color: var(--text); }
 
-<!-- SEARCH CARD -->
-<div class="card">
-  <div class="card-title">🔍 Cari Video</div>
-  <input id="kw" type="text" placeholder="Keyword pencarian..." />
-  <input id="filter" type="text" placeholder="Filter durasi: <1m, >3m (opsional)" />
-  <input id="limit" type="number" value="" min="1" max="50" placeholder="jumlah hasil(1-50)"/>
-  <button class="btn-primary" id="btn-search" onclick="doSearch()">Cari Sekarang</button>
-  <div class="status-txt" id="search-status"></div>
-  <div id="results"></div>
-</div>
+  /* ===== TOMBOL RESOLUSI ===== */
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .card-header .card-title { margin-bottom: 0; }
 
-<!-- DOWNLOAD URL CARD -->
-<div class="card">
-  <div class="card-title">🔗 Download by URL</div>
-  <input id="dl-url" type="text" placeholder="https://vm.tiktok.com/..." />
-  <button class="btn-primary" id="btn-dlurl" onclick="doDownloadUrl()">Download Langsung</button>
-  <div class="status-txt" id="url-status"></div>
-</div>
+  .res-trigger { position: relative; display: inline-block; }
+  .res-btn {
+    width: auto;
+    padding: 5px 10px;
+    border-radius: 16px;
+    border: none;
+    background: #222;
+    color: #fff;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.5), 0 1px 3px rgba(0,0,0,0.4);
+    transition: background 0.15s;
+    min-width: 60px;
+    min-height: 30px;
+    justify-content: center;
+  }
+  .res-btn:hover { background: #2a2a2a; }
+  .res-btn .arrow { font-size: 9px; opacity: 0.5; }
 
-<!-- DOWNLOAD BUBBLE CONTAINER -->
-<div id="dl-container"></div>
+  .res-popup {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    background: #1e1e1e;
+    border: none;
+    border-radius: 10px;
+    overflow: hidden;
+    z-index: 9999;
+    min-width: 200px; /* Lebar ditambah biar deskripsi gak sempit */
+    box-shadow: 0 8px 28px rgba(0,0,0,0.7), 0 2px 8px rgba(0,0,0,0.5);
+  }
+  .res-popup.open { display: block; animation: fadeIn 0.15s ease; }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .res-option {
+    padding: 12px 16px;
+    cursor: pointer;
+    transition: background 0.1s;
+    display: flex;
+    flex-direction: column; /* Membuat isi jadi vertikal */
+    align-items: flex-start; /* Rata kiri */
+    gap: 2px;
+    position: relative;
+  }
+  .res-option:hover { background: #2a2a2a; }
+  
+  /* Judul di dalam opsi */
+  .res-opt-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    color: #aaa;
+  }
+  .res-option.selected .res-opt-title { color: var(--accent); }
+  
+  /* Deskripsi di bawah judul */
+  .res-opt-desc {
+    color: #888;
+    font-size: 10px;
+    font-family: 'DM Sans', sans-serif;
+    line-height: 1.3;
+    font-weight: normal;
+  }
+  .res-option:hover .res-opt-desc { color: #ccc; }
 
-<script>
+  /* Icon Checkmark */
+  .res-option.selected::after { 
+    content: '✓'; 
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 11px; 
+    color: var(--accent);
+  }
+  
+  .res-divider { height: 1px; background: #2a2a2a; }
+
+  /* ===== PREVIEW CARD URL ===== */
+  #url-preview-container { margin-top: 14px; display: none; }
+  .preview-card {
+    background: #111;
+    border: 1px solid var(--accent);
+    border-radius: 10px;
+    padding: 12px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    animation: fadeIn 0.3s ease;
+  }
+  .preview-thumb {
+    width: 60px;
+    height: 80px;
+    border-radius: 6px;
+    object-fit: cover;
+  }
+  .preview-info { flex: 1; min-width: 0; }
+  .preview-title {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .preview-meta {
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  </style>
+ </head>
+ <body>
+  <h2 style="position: absolute; right: 20px;">
+   zakdev_&gt;
+  </h2>
+  <h1>
+   🎬 Vid
+   <span>
+    Finder
+   </span>
+  </h1>
+  <div class="card">
+   <div class="card-header">
+    <div class="card-title">
+     🔍 Cari Video
+    </div>
+    <div class="res-trigger" id="triggerSearch">
+     <button class="res-btn" onclick="togglePopup('popupSearch')">
+      <span id="labelSearch">
+       HYPE v1.2
+      </span>
+      <span class="arrow">
+       ▼
+      </span>
+     </button>
+     <div class="res-popup" id="popupSearch">
+      <div class="res-option selected" onclick="pickRes('Search','HYPE v1.2',this)">
+       <span class="res-opt-title">
+        HYPE v1.2
+       </span>
+       <span class="res-opt-desc">
+        Cocok untuk mengunduh video dengan resolusi tak terbatas
+       </span>
+      </div>
+      <div class="res-divider">
+      </div>
+      <div class="res-option" onclick="pickRes('Search','720p',this)">
+       <span class="res-opt-title">
+        720p
+       </span>
+       <span class="res-opt-desc">
+        Kualitas standar HD
+       </span>
+      </div>
+     </div>
+    </div>
+   </div>
+   <div class="input-wrapper">
+    <input id="kw" placeholder="Keyword pencarian..." type="text"/>
+    <span class="clear-btn" id="clear-kw" onclick="clearInput('kw')">✕</span>
+   </div>
+   <div class="input-wrapper">
+    <input id="filter" placeholder="Filter durasi: <1m, >3m (opsional)" type="text"/>
+    <span class="clear-btn" id="clear-filter" onclick="clearInput('filter')">✕</span>
+   </div>
+   <div class="input-wrapper">
+    <input id="limit" max="50" min="1" placeholder="jumlah hasil(1-50)" type="number" value=""/>
+    <span class="clear-btn" id="clear-limit" onclick="clearInput('limit')">✕</span>
+   </div>
+   <button class="btn-primary" id="btn-search" onclick="doSearch()">
+    Cari Sekarang
+   </button>
+   <div class="status-txt" id="search-status">
+   </div>
+   <div id="results">
+   </div>
+  </div>
+  <div class="card">
+   <div class="card-header">
+    <div class="card-title">
+     🔗 Download by URL
+    </div>
+    <div class="res-trigger" id="triggerUrl">
+     <button class="res-btn" onclick="togglePopup('popupUrl')">
+      <span id="labelUrl">
+       HYPE v1.2
+      </span>
+      <span class="arrow">
+       ▼
+      </span>
+     </button>
+     <div class="res-popup" id="popupUrl">
+      <div class="res-option selected" onclick="pickRes('Url','HYPE v1.2',this)">
+       <span class="res-opt-title">
+        HYPE v1.2
+       </span>
+       <span class="res-opt-desc">
+        Cocok untuk mengunduh video dengan resolusi tak terbatas
+       </span>
+      </div>
+      <div class="res-divider">
+      </div>
+      <div class="res-option" onclick="pickRes('Url','720',this)">
+       <span class="res-opt-title">
+        720p
+       </span>
+       <span class="res-opt-desc">
+        Kualitas standar HD
+       </span>
+      </div>
+     </div>
+    </div>
+   </div>
+   <div class="input-wrapper">
+    <input id="dl-url" placeholder="https://vm.tiktok.com/..." type="text"/>
+    <span class="clear-btn" id="clear-dl-url" onclick="clearInput('dl-url')">✕</span>
+   </div>
+   <div id="url-preview-container"></div>
+   <button class="btn-primary" id="btn-dlurl" onclick="doDownloadUrl()">
+    Download Langsung
+   </button>
+   <div class="status-txt" id="url-status">
+   </div>
+  </div>
+  <div id="dl-container">
+  </div>
+  <script>
+  // Fungsi Hard Refresh: Hapus storage lokal & memicu Clear-Site-Data dari server
+  function triggerHardRefresh() {
+    console.log("[System] Initiating 100% Hard Refresh...");
+    localStorage.clear();
+    sessionStorage.clear();
+    // Gunakan URL dengan timestamp untuk memicu pembersihan cache di backend vinder.py
+    const url = new URL(window.location.origin + window.location.pathname);
+    url.searchParams.set('refresh', Date.now());
+    window.location.replace(url.toString());
+  }
+
+  const resSelected = { Search: 'HYPE v1.2', Url: 'HYPE v1.2' };
+
+  document.addEventListener('click', function(e) {
+    ['popupSearch','popupUrl'].forEach(id => {
+      const popup = document.getElementById(id);
+      if (popup && !popup.closest('.res-trigger').contains(e.target)) {
+        popup.classList.remove('open');
+      }
+    });
+  });
+
+  function togglePopup(popupId) {
+    const popup = document.getElementById(popupId);
+    const isOpen = popup.classList.contains('open');
+    document.querySelectorAll('.res-popup').forEach(p => p.classList.remove('open'));
+    if (!isOpen) popup.classList.add('open');
+  }
+
+  function pickRes(section, res, el) {
+    resSelected[section] = res;
+    document.getElementById('label' + section).innerText = res;
+    el.closest('.res-popup').querySelectorAll('.res-option').forEach(o => o.classList.remove('selected'));
+    el.classList.add('selected');
+    el.closest('.res-popup').classList.remove('open');
+  }
+
+  // ===== CLEAR BUTTON LOGIC =====
+  function clearInput(id) {
+    const el = document.getElementById(id);
+    el.value = '';
+    el.focus();
+    toggleClearBtn(id);
+    if (id === 'dl-url') document.getElementById('url-preview-container').style.display = 'none';
+  }
+  function toggleClearBtn(id) {
+    const el = document.getElementById(id);
+    const btn = document.getElementById('clear-' + id);
+    if (btn) btn.style.display = el.value ? 'block' : 'none';
+    if (id === 'dl-url' && el.value.startsWith('http')) {
+       // Auto preview if URL
+       setTimeout(() => autoPreview(el.value), 500);
+    }
+  }
+
+  let lastUrl = '';
+  async function autoPreview(url) {
+    if (url === lastUrl) return;
+    if (!url.includes('tiktok.com')) return;
+    lastUrl = url;
+    
+    const container = document.getElementById('url-preview-container');
+    container.style.display = 'block';
+    container.innerHTML = '<div style="font-size:11px; color:var(--muted)">🔍 Mengintip link...</div>';
+
+    try {
+      const resp = await fetch('/api/download_url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, resolution: resSelected['Url'] })
+      });
+      const data = await resp.json();
+      if (data.status === 'success') {
+        container.innerHTML = `
+          <div class="preview-card">
+            <img src="${data.cover}" class="preview-thumb">
+            <div class="preview-info">
+              <div class="preview-title">${data.title}</div>
+              <div class="preview-meta">
+                <span class="meta-tag">👤 ${data.author}</span>
+                <span class="meta-tag">⏱ ${data.duration}</span>
+                <span class="meta-tag">💾 ${data.size}</span>
+              </div>
+            </div>
+            <div style="color:var(--accent); font-size:18px;">⬇️</div>
+          </div>
+        `;
+      } else {
+        container.style.display = 'none';
+      }
+    } catch(e) {
+      container.style.display = 'none';
+    }
+  }
+  ['kw', 'filter', 'limit', 'dl-url'].forEach(id => {
+    document.getElementById(id).addEventListener('input', () => toggleClearBtn(id));
+  });
+
   // ===== BUBBLE SYSTEM =====
   function createBubble(title) {
     const wrap = document.getElementById('dl-container');
     const el = document.createElement('div');
     el.className = 'dl-bubble';
+    const barId = 'bar-' + Date.now();
     el.innerHTML = `
       <div class="dl-bubble-icon loading">⬇️</div>
       <div class="dl-bubble-text">
-        <div class="dl-bubble-label">${title}</div>
-        <div class="dl-bubble-sub">Mengunduh...</div>
-        <div class="dl-progress"><div class="dl-progress-bar" id="bar-${Date.now()}"></div></div>
+        <div class="dl-bubble-label"></div>
+        <div class="dl-bubble-sub">Mengunduh: 0%</div>
+        <div class="dl-progress"><div class="dl-progress-bar" id="${barId}"></div></div>
       </div>
       <button class="dl-close" onclick="closeBubble(this)">✕</button>
     `;
+    el.querySelector('.dl-bubble-label').textContent = title;
     wrap.appendChild(el);
-    const bar = el.querySelector('.dl-progress-bar');
+    const bar = el.querySelector('#' + barId);
+    const sub = el.querySelector('.dl-bubble-sub');
+    
     return {
+      updateProgress(p) {
+        bar.style.width = p + '%';
+        sub.textContent = 'Mengunduh: ' + Math.round(p) + '%';
+      },
       setSuccess() {
         el.querySelector('.dl-bubble-icon').textContent = '✅';
         el.querySelector('.dl-bubble-icon').className = 'dl-bubble-icon success';
-        el.querySelector('.dl-bubble-sub').textContent = 'Selesai — cek folder Download';
+        sub.textContent = 'Selesai — Tersimpan!';
         bar.className = 'dl-progress-bar done';
-        setTimeout(() => fadeOutBubble(el), 6000);
+        // Auto-close bubble setelah 5 detik, tidak perlu refresh halaman
+        setTimeout(() => fadeOutBubble(el), 5000);
       },
       setError(msg) {
         el.querySelector('.dl-bubble-icon').textContent = '❌';
         el.querySelector('.dl-bubble-icon').className = 'dl-bubble-icon error';
-        el.querySelector('.dl-bubble-sub').textContent = msg || 'Gagal';
+        sub.textContent = msg || 'Gagal';
         bar.className = 'dl-progress-bar fail';
       }
     };
   }
 
-  function closeBubble(btn) {
-    const el = btn.closest('.dl-bubble');
-    fadeOutBubble(el);
-  }
-
+  function closeBubble(btn) { fadeOutBubble(btn.closest('.dl-bubble')); }
   function fadeOutBubble(el) {
+    if (!el) return;
     el.classList.add('fade-out');
     setTimeout(() => el.remove(), 400);
   }
 
-  // ===== DOWNLOAD TRIGGER =====
-  async function triggerDownload(endpoint, payload, title) {
-    const bubble = createBubble(title.length > 40 ? title.slice(0, 40) + '…' : title);
+  function handleRealDownload(dUrl, title) {
+    const bubble = createBubble(title);
     try {
-      const resp = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}));
-        throw new Error(err.msg || `HTTP ${resp.status}`);
-      }
-
-      // Cek apakah response adalah file (video/mp4)
-      const ct = resp.headers.get('Content-Type') || '';
-      if (ct.includes('video') || ct.includes('octet-stream')) {
-        const blob = await resp.blob();
-        const url  = URL.createObjectURL(blob);
-        const a    = document.createElement('a');
-        // Coba ambil nama file dari header
-        const cd   = resp.headers.get('Content-Disposition') || '';
-        const fnMatch = cd.match(/filename\*?=(?:UTF-8'')?["']?([^"';\n]+)/i);
-        a.download = fnMatch ? decodeURIComponent(fnMatch[1].trim()) : title.slice(0, 50) + '.mp4';
-        a.href = url;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        bubble.setSuccess();
-      } else {
-        const json = await resp.json();
-        if (json.status === 'error') throw new Error(json.msg);
-        bubble.setSuccess();
-      }
+      // Menggunakan native browser download dengan elemen <a>
+      const a = document.createElement('a');
+      a.href = dUrl;
+      a.download = ''; // Browser akan menggunakan filename dari header Content-Disposition
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      
+      // Karena kita tidak bisa melacak progress native download di JS, 
+      // kita langsung set success bubble untuk memberi feedback ke user.
+      bubble.updateProgress(100);
+      bubble.setSuccess();
     } catch (e) {
+      console.error('Download Fail:', e);
       bubble.setError(e.message);
     }
   }
 
-  // ===== SEARCH =====
+  function getDownloadUrl(v, resolution) {
+    // Logika pemilihan URL: Prioritaskan HD jika mode HYPE aktif
+    let vUrl = '';
+    if (resolution === 'HYPE v1.2') {
+        vUrl = v.hdplay || v.play || '';
+    } else {
+        vUrl = v.play || v.hdplay || '';
+    }
+    
+    if (!vUrl) return '';
+    
+    const t = new Date().getTime();
+    return `/api/get_video?url=${encodeURIComponent(vUrl)}&title=${encodeURIComponent(v.title)}&mode=${encodeURIComponent(resolution)}&t=${t}`;
+  }
+
   async function doSearch() {
     const kw = document.getElementById('kw').value.trim();
     if (!kw) return;
     const btn = document.getElementById('btn-search');
     const status = document.getElementById('search-status');
     const resultsEl = document.getElementById('results');
+    const resolution = resSelected['Search'];
 
     btn.disabled = true;
     btn.textContent = 'Mencari...';
     status.textContent = 'Menghubungi server...';
-    status.className = 'status-txt';
     resultsEl.innerHTML = '';
 
     try {
@@ -377,32 +739,32 @@ right: 20px;"> zakdev_> </h2>
         body: JSON.stringify({
           keyword: kw,
           limit: parseInt(document.getElementById('limit').value) || 5,
-          filter: document.getElementById('filter').value.trim()
+          filter: document.getElementById('filter').value.trim(),
+          resolution
         })
       });
       const data = await resp.json();
       if (data.status !== 'success') throw new Error(data.msg);
-
-      if (!data.data.length) {
-        status.textContent = 'Tidak ada hasil.';
-        return;
-      }
-
+      
       status.textContent = `${data.data.length} video ditemukan`;
       status.className = 'status-txt ok';
 
       data.data.forEach(v => {
+        const dUrl = getDownloadUrl(v, resolution);
         const div = document.createElement('div');
         div.className = 'video-item';
         div.innerHTML = `
-          <div class="video-title">${v.title}</div>
-          <div class="video-meta">
-            <span>⏱ ${v.duration}</span>
-            <span>👤 ${v.channel}</span>
+          <img src="${v.cover}" class="video-thumb">
+          <div class="video-info">
+            <div class="video-title">${v.title}</div>
+            <div class="video-meta">
+              <span class="meta-tag">⏱ ${v.duration}</span>
+              <span class="meta-tag">💾 ${v.size}</span>
+            </div>
+            <a href="${dUrl}" download class="btn-dl" style="text-decoration: none;" onclick="createBubble('${v.title.replace(/'/g,"")}').setSuccess()">
+              ⬇️ Download
+            </a>
           </div>
-          <button class="btn-dl" onclick='downloadVideo(${JSON.stringify(v)}, this)'>
-            ⬇️ Download
-          </button>
         `;
         resultsEl.appendChild(div);
       });
@@ -415,40 +777,40 @@ right: 20px;"> zakdev_> </h2>
     }
   }
 
-  function downloadVideo(v, btn) {
-    btn.disabled = true;
-    btn.textContent = '⏳ Memproses...';
-    triggerDownload('/api/download', v, v.title).finally(() => {
-      btn.disabled = false;
-      btn.textContent = '⬇️ Download';
-    });
-  }
-
-  // ===== DOWNLOAD URL =====
   async function doDownloadUrl() {
     const url = document.getElementById('dl-url').value.trim();
     if (!url) return;
     const btn = document.getElementById('btn-dlurl');
-    const status = document.getElementById('url-status');
+    const resolution = resSelected['Url'];
 
     btn.disabled = true;
     btn.textContent = 'Memproses...';
-    status.textContent = '';
-    status.className = 'status-txt';
 
-    await triggerDownload('/api/download_url', { url }, url);
-
-    btn.disabled = false;
-    btn.textContent = 'Download Langsung';
+    try {
+      const resp = await fetch('/api/download_url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, resolution })
+      });
+      const data = await resp.json();
+      if (data.status === 'success') {
+        const dUrl = getDownloadUrl(data, resolution);
+        handleRealDownload(dUrl, data.title);
+      } else {
+        throw new Error(data.msg);
+      }
+    } catch (e) {
+      const bubble = createBubble('URL Error');
+      bubble.setError(e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Download Langsung';
+    }
   }
 
-  // Enter key search
-  document.getElementById('kw').addEventListener('keydown', e => {
-    if (e.key === 'Enter') doSearch();
-  });
-  document.getElementById('dl-url').addEventListener('keydown', e => {
-    if (e.key === 'Enter') doDownloadUrl();
-  });
-</script>
-</body>
+  document.getElementById('kw').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+  document.getElementById('dl-url').addEventListener('keydown', e => { if (e.key === 'Enter') doDownloadUrl(); });
+  </script>
+ </body>
 </html>
+

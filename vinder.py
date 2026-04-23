@@ -16,13 +16,10 @@ CORS(app)
 
 # Global Session dengan Headers yang lebih mirip Browser sungguhan
 session = requests.Session()
-DOWNLOAD_HEADERS = {
+DEFAULT_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     "Accept": "video/mp4,video/*;q=0.9,audio/*;q=0.8,*/*;q=0.5",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Referer": "https://www.tiktok.com/",
-    "Origin": "https://www.tiktok.com/",
-    "Range": "bytes=0-"
+    "Accept-Language": "en-US,en;q=0.9"
 }
 
 def format_durasi(detik):
@@ -32,29 +29,40 @@ def format_durasi(detik):
         return f"{m}m{s:02d}s"
     except: return "?"
 
-def is_audio_only(response):
+def is_invalid_video(response):
     ct = response.headers.get('Content-Type', '').lower()
     cl = int(response.headers.get('Content-Length', 0))
-    if ct.startswith('audio/'): return True
-    cd = response.headers.get('Content-Disposition', '').lower()
-    if any(ext in cd for ext in ['.m4a', '.aac', '.mp3']): return True
-    if cl > 0 and cl < 500000: # Dibawah 500KB pasti bukan video
+    # Jika HTML, sudah pasti bukan video (biasanya halaman error/captcha)
+    if 'text/html' in ct or 'application/json' in ct:
+        return True
+    # Jika file terlalu kecil (di bawah 10KB), kemungkinan besar bukan video valid
+    if cl > 0 and cl < 10000:
         return True
     return False
 
 def fetch_video_stream(url, fallback_url=None):
+    headers = DEFAULT_HEADERS.copy()
+    if 'tiktok.com' in url:
+        headers.update({
+            "Referer": "https://www.tiktok.com/",
+            "Origin": "https://www.tiktok.com/"
+        })
+    
     try:
-        r = session.get(url, stream=True, timeout=30, headers=DOWNLOAD_HEADERS, allow_redirects=True)
-        if r.status_code != 200 or is_audio_only(r):
+        r = session.get(url, stream=True, timeout=30, headers=headers, allow_redirects=True)
+        if r.status_code >= 400 or is_invalid_video(r):
             if fallback_url and fallback_url != url:
-                r_fallback = session.get(fallback_url, stream=True, timeout=30, headers=DOWNLOAD_HEADERS)
-                if r_fallback.status_code == 200:
+                r_fallback = session.get(fallback_url, stream=True, timeout=30, headers=headers)
+                if r_fallback.status_code < 400 and not is_invalid_video(r_fallback):
                     return r_fallback, True
         r.raise_for_status()
         return r, False
     except Exception as e:
-        if fallback_url:
-            return session.get(fallback_url, stream=True, timeout=30, headers=DOWNLOAD_HEADERS), True
+        if fallback_url and fallback_url != url:
+            try:
+                r_fb = session.get(fallback_url, stream=True, timeout=30, headers=headers)
+                if r_fb.status_code < 400: return r_fb, True
+            except: pass
         raise e
 
 @app.route('/')
@@ -101,7 +109,15 @@ def get_video_api():
     try:
         r, used_fallback = fetch_video_stream(video_url, fallback_url)
         safe_title = re.sub(r'[^a-zA-Z0-9]', '_', title)[:40] or 'video'
-        filename = f"VidFinder_{safe_title}_{int(time.time())}.mp4"
+        
+        # Ambil content-type asli dari upstream
+        content_type = r.headers.get('Content-Type', 'video/mp4')
+        ext = 'mp4'
+        if 'video/webm' in content_type: ext = 'webm'
+        elif 'video/quicktime' in content_type: ext = 'mov'
+        elif 'video/x-matroska' in content_type: ext = 'mkv'
+        
+        filename = f"VidFinder_{safe_title}_{int(time.time())}.{ext}"
 
         def generate():
             try:
@@ -110,14 +126,18 @@ def get_video_api():
             except Exception as e:
                 logger.error(f"Stream error: {e}")
 
+        # Teruskan status code (terutama 206) dan headers penting
         headers = {
             "Content-Disposition": f'attachment; filename="{filename}"',
-            "Content-Type": "video/mp4",
-            "Access-Control-Expose-Headers": "Content-Length"
+            "Content-Type": content_type,
+            "Access-Control-Expose-Headers": "Content-Length, Content-Range"
         }
-        cl = r.headers.get('Content-Length')
-        if cl: headers["Content-Length"] = cl
-        return Response(stream_with_context(generate()), headers=headers)
+        
+        for h in ['Content-Length', 'Content-Range', 'Accept-Ranges']:
+            if h in r.headers:
+                headers[h] = r.headers[h]
+        
+        return Response(stream_with_context(generate()), status=r.status_code, headers=headers)
     except Exception as e:
         logger.error(f"Proxy Error: {str(e)}")
         return f"Gagal mengambil video: {str(e)}", 500
@@ -133,10 +153,39 @@ def download_url_api():
         'quiet': True,
         'no_warnings': True,
         'noplaylist': True,
-        'user_agent': DOWNLOAD_HEADERS['User-Agent']
+        'user_agent': DEFAULT_HEADERS['User-Agent']
     }
     
     try:
+        # Jika TikTok, coba pakai tikwm dulu karena lebih stabil daripada yt-dlp di server
+        if 'tiktok.com' in url_input:
+            try:
+                # Resolve redirect safely
+                resp = session.get(url_input, allow_redirects=True, timeout=10, headers=DEFAULT_HEADERS, stream=True)
+                real_url = resp.url
+                resp.close() # Close stream immediately
+                
+                video_id_match = re.search(r'video/(\d+)', real_url)
+                if video_id_match:
+                    # Menggunakan URL lengkap (setelah resolve redirect) lebih stabil untuk TikWM
+                    api_resp = session.get(f"https://www.tikwm.com/api/?url={real_url}", timeout=10).json()
+                    if api_resp.get('code') == 0:
+                        v = api_resp.get('data', {})
+                        video_url = v.get('hdplay') or v.get('play')
+                        return jsonify({
+                            "status": "success",
+                            "url": video_url,
+                            "hdplay": video_url,
+                            "play": video_url,
+                            "title": v.get('title', 'Video TikTok'),
+                            "author": v.get('author', {}).get('nickname', 'User'),
+                            "duration": format_durasi(v.get('duration')),
+                            "size": f"{round(v.get('size', 0)/(1024*1024), 2)} MB" if v.get('size') else "?",
+                            "cover": v.get('cover', '')
+                        })
+            except Exception as e:
+                logger.warning(f"TikWM Fallback failed: {e}")
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url_input, download=False)
             video_url = info.get('url')
@@ -155,13 +204,12 @@ def download_url_api():
             raw_size = info.get('filesize') or info.get('filesize_approx') or 0
             display_size = f"{round(raw_size/(1024*1024), 2)} MB" if raw_size > 0 else "?"
 
-            # SINKRONISASI FIELD: Kirim 'url', 'hdplay', dan 'play' sekaligus agar Frontend tidak bingung
             return jsonify({
                 "status": "success",
                 "url": video_url,
                 "hdplay": video_url, 
                 "play": video_url,
-                "title": info.get('title', 'Video TikTok'),
+                "title": info.get('title', 'Video'),
                 "author": info.get('uploader', 'User'),
                 "duration": format_durasi(info.get('duration')),
                 "size": display_size,
