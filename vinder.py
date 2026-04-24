@@ -1,873 +1,205 @@
-<!DOCTYPE html>
-<html lang="id">
- <head>
-  <meta charset="utf-8"/>
-  <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-  <title>
-   Vinder
-  </title>
-  <style>
-   @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@400;500;600&display=swap');
+import os
+import re
+import time
+import requests
+import logging
+import yt_dlp
+from flask import Flask, request, jsonify, send_file, Response, stream_with_context
+from flask_cors import CORS
 
-  :root {
-    --bg: #0f0f0f;
-    --card: #1a1a1a;
-    --border: #2a2a2a;
-    --text: #e8e8e8;
-    --muted: #666;
-    --accent: #2563eb;
-    --accent-hover: #1d4ed8;
-    --success: #16a34a;
-    --error: #dc2626;
-    --warning: #d97706;
-  }
+# Setup Mata-mata (Logging)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+app = Flask(__name__)
+CORS(app)
 
-  body {
-    background-color: #000000;
-    color: var(--text);
-    font-family: 'DM Sans', sans-serif;
-    min-height: 100vh;
-    padding: 20px 16px 80px;
-  }
- 
-  h1 {
-    font-family: 'Space Mono', monospace;
-    font-size: 22px;
-    letter-spacing: -0.5px;
-    margin-bottom: 24px;
-    display: flex;
-    visibility: hidden;
-    align-items: center;
-    gap: 10px;
-  }
-  h1 span { color: var(--accent); }
+# User-Agent khusus mobile untuk mendapatkan bitrate lebih tinggi (HYPE v1.3)
+TIKTOK_UA = "com.zhiliaoapp.musically/2022505030 (Linux; U; Android 12; en_US; Pixel 6; Build/SQ3A.220705.004; Cronet/58.0.2991.0)"
 
-  .card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 18px;
-    margin-bottom: 16px;
-  }
+DEFAULT_HEADERS = {
+    "User-Agent": TIKTOK_UA,
+    "Accept": "*/*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Connection": "keep-alive",
+}
 
-  .card-title {
-    font-family: 'Space Mono', monospace;
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 14px;
-    color: #ebebebff;
-  }
+session = requests.Session()
 
-  input {
-    width: 100%;
-    background: #111;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 12px 14px;
-    color: var(--text);
-    font-family: 'DM Sans', sans-serif;
-    font-size: 14px;
-    margin-bottom: 10px;
-    outline: none;
-    transition: border-color 0.2s;
-  }
-  input:focus { border-color: var(--accent); }
-  input::placeholder { color: var(--muted); }
-
-  button {
-    width: 100%;
-    padding: 13px;
-    border: none;
-    border-radius: 8px;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .btn-primary {
-    background: var(--accent);
-    color: #fff;
-  }
-  .btn-primary:hover { background: var(--accent-hover); }
-  .btn-primary:disabled { background: #555; opacity: 0.8; cursor: not-allowed; }
-
-  .btn-dl {
-    background: #1a2a1a;
-    color: #4ade80;
-    border: 1px solid #2a3a2a;
-    padding: 9px;
-    font-size: 13px;
-    border-radius: 6px;
-    margin-top: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-  }
-  .btn-dl:hover { background: #22351f; }
-  .btn-dl:disabled { opacity: 0.5; cursor: not-allowed; }
-
-  #results { margin-top: 8px; }
-
-  .video-item {
-    background: #111;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 12px;
-    margin-bottom: 10px;
-    display: flex;
-    gap: 12px;
-    align-items: flex-start;
-  }
-  .video-thumb {
-    width: 85px;
-    height: 120px;
-    background: #222;
-    border-radius: 6px;
-    object-fit: cover;
-    flex-shrink: 0;
-  }
-  .video-info {
-    flex: 1;
-    min-width: 0;
-  }
-  .video-title {
-    font-size: 13px;
-    font-weight: 600;
-    line-height: 1.4;
-    margin-bottom: 6px;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-  .video-meta {
-    font-size: 11px;
-    color: var(--muted);
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 6px;
-  }
-  .meta-tag {
-    background: #1a1a1a;
-    padding: 2px 6px;
-    border-radius: 4px;
-    border: 1px solid #333;
-  }
-
-  /* ===== DOWNLOAD BUBBLE ===== */
-  #dl-container {
-    position: fixed;
-    bottom: 20px;
-    left: 16px;
-    right: 16px;
-    z-index: 999;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    pointer-events: none;
-  }
-
-  .dl-bubble {
-    background: #1c1c1c;
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 14px 16px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
-    pointer-events: all;
-    animation: slideUp 0.3s ease;
-    transition: opacity 0.4s, transform 0.4s;
-  }
-
-  .dl-bubble.fade-out {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-
-  @keyframes slideUp {
-    from { opacity: 0; transform: translateY(30px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-
-  .dl-bubble-icon {
-    width: 38px;
-    height: 38px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 18px;
-    flex-shrink: 0;
-  }
-  .dl-bubble-icon.loading { background: #1a2540; animation: pulse 1.2s infinite; }
-  .dl-bubble-icon.success { background: #1a2e1a; }
-  .dl-bubble-icon.error   { background: #2e1a1a; }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-  }
-
-  .dl-bubble-text { flex: 1; min-width: 0; }
-  .dl-bubble-label {
-    font-size: 13px;
-    font-weight: 600;
-    margin-bottom: 2px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .dl-bubble-sub {
-    font-size: 11px;
-    color: var(--muted);
-  }
-
-  .dl-progress {
-    height: 3px;
-    background: #2a2a2a;
-    border-radius: 2px;
-    margin-top: 8px;
-    overflow: hidden;
-  }
-  .dl-progress-bar {
-    height: 100%;
-    background: var(--accent);
-    border-radius: 2px;
-    width: 0%;
-    transition: width 0.1s linear;
-  }
-  .dl-progress-bar.done { width: 100%; background: #4ade80; }
-  .dl-progress-bar.fail { width: 100%; background: var(--error); }
-
-  .dl-close {
-    background: none;
-    border: none;
-    color: var(--muted);
-    font-size: 18px;
-    width: auto;
-    padding: 4px 6px;
-    cursor: pointer;
-    flex-shrink: 0;
-  }
-
-  .status-txt { font-size: 12px; margin-top: 8px; color: var(--muted); min-height: 18px; }
-  .status-txt.ok  { color: #4ade80; }
-  .status-txt.err { color: #f87171; }
-
-  /* ===== INPUT WITH CLEAR BUTTON ===== */
-  .input-wrapper {
-    position: relative;
-    width: 100%;
-    margin-bottom: 10px;
-  }
-  .input-wrapper input {
-    margin-bottom: 0;
-    padding-right: 40px;
-  }
-  .clear-btn {
-    position: absolute;
-    right: 10px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--muted);
-    cursor: pointer;
-    display: none;
-    font-size: 18px;
-    padding: 5px;
-    user-select: none;
-    line-height: 1;
-  }
-  .clear-btn:hover { color: var(--text); }
-
-  /* ===== TOMBOL RESOLUSI ===== */
-  .card-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 14px;
-  }
-  .card-header .card-title { margin-bottom: 0; }
-
-  .res-trigger { position: relative; display: inline-block; }
-  .res-btn {
-    width: auto;
-    padding: 5px 10px;
-    border-radius: 16px;
-    border: none;
-    background: #222;
-    color: #fff;
-    font-family: 'Space Mono', monospace;
-    font-size: 11px;
-    font-weight: 700;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    box-shadow: 0 3px 10px rgba(0,0,0,0.5), 0 1px 3px rgba(0,0,0,0.4);
-    transition: background 0.15s;
-    min-width: 60px;
-    min-height: 30px;
-    justify-content: center;
-  }
-  .res-btn:hover { background: #2a2a2a; }
-  .res-btn .arrow { font-size: 9px; opacity: 0.5; }
-
-  .res-popup {
-    display: none;
-    position: absolute;
-    right: 0;
-    top: calc(100% + 6px);
-    background: #1e1e1e;
-    border: none;
-    border-radius: 10px;
-    overflow: hidden;
-    z-index: 9999;
-    min-width: 200px;
-    box-shadow: 0 8px 28px rgba(0,0,0,0.7), 0 2px 8px rgba(0,0,0,0.5);
-  }
-  .res-popup.open { display: block; animation: fadeIn 0.15s ease; }
-  @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(-6px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-  .res-option {
-    padding: 12px 16px;
-    cursor: pointer;
-    transition: background 0.1s;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
-    position: relative;
-  }
-  .res-option:hover { background: #2a2a2a; }
-  
-  .res-opt-title {
-    font-family: 'Space Mono', monospace;
-    font-size: 12px;
-    font-weight: 700;
-    color: #aaa;
-  }
-  .res-option.selected .res-opt-title { color: var(--accent); }
-  
-  .res-opt-desc {
-    color: #888;
-    font-size: 10px;
-    font-family: 'DM Sans', sans-serif;
-    line-height: 1.3;
-    font-weight: normal;
-  }
-  .res-option:hover .res-opt-desc { color: #ccc; }
-
-  .res-option.selected::after { 
-    content: '✓'; 
-    position: absolute;
-    right: 16px;
-    top: 50%;
-    transform: translateY(-50%);
-    font-size: 11px; 
-    color: var(--accent);
-  }
-  
-  .res-divider { height: 1px; background: #2a2a2a; }
-
-  /* ===== ELEGANT GRADIENT EFFECT ===== */
-  .rainbow-text {
-      font-weight: bold;
-    background: linear-gradient(
-      to right, 
-      #9333ea, /* Ungu */
-      #2563eb, /* Biru */
-      #ef4444, /* Merah */
-      #9333ea  /* Loop back to Ungu */
-    );
-    background-size: 200% auto;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    animation: elegant-move 5s ease infinite;
-    font-weight: 800;
-    display: inline-block;
-    filter: drop-shadow(0 0 2px rgba(147, 51, 234, 0.3));
-  }
-  @keyframes elegant-move {
-    0% { background-position: 0% center; }
-    50% { background-position: 100% center; }
-    100% { background-position: 0% center; }
-  }
-
-  /* ===== PREVIEW CARD URL ===== */
-  #url-preview-container { margin-top: 14px; display: none; }
-  .preview-card {
-    background: #111;
-    border: 1px solid var(--accent);
-    border-radius: 10px;
-    padding: 12px;
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    animation: fadeIn 0.3s ease;
-  }
-  .preview-thumb {
-    width: 60px;
-    height: 80px;
-    border-radius: 6px;
-    object-fit: cover;
-  }
-  .preview-info { flex: 1; min-width: 0; }
-  .preview-title {
-    font-size: 13px;
-    font-weight: 600;
-    margin-bottom: 4px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .preview-meta {
-    font-size: 11px;
-    color: var(--muted);
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-  </style>
- </head>
- <body>
-
-  <h2 style="position: absolute; right: 20px;">
-   zakdev_&gt;
-  </h2>
-  <h1>
-    Vinder 
-  </h1>
-  
-  <h2 style="  font-family: 'Space Mono', monospace;
-    font-size: 22px;
-    letter-spacing: -0.5px;
-    position: absolute;
-    top: 17px;
-    left: 48px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
+def fetch_video_stream(url, fallback_url=None):
+    headers = DEFAULT_HEADERS.copy()
     
-  }">
-    inder 
-  </h2>
-   	<img src="https://dusty-aquamarine-inqxmkgfwd.edgeone.app/20260424_191010.jpg" style="width: 60px; height: 60px; position: absolute; border-radius: 120px;
-   	   top: 4px;
-   	   left: 2px;
-   	   z-index: -1;">
-  <div class="card">
-   <div class="card-header">
-    <div class="card-title">
-      Cari Video
-    </div>
-    <div class="res-trigger" id="triggerSearch">
-     <button class="res-btn" onclick="togglePopup('popupSearch')">
-      <span class="rainbow-text" id="labelSearch">
-       HYPE v1.2
-      </span>
-      <span class="arrow">
-       ▼
-      </span>
-     </button>
-     <div class="res-popup" id="popupSearch">
-      <div class="res-option selected" onclick="pickRes('Search','HYPE v1.2',this)">
-       <span class="res-opt-title rainbow-text">
-        HYPE v1.2
-       </span>
-       <span class="res-opt-desc">
-        Cocok untuk mengunduh video dengan resolusi tak terbatas
-       </span>
-      </div>
-      <div class="res-divider">
-      </div>
-      <div class="res-option" onclick="pickRes('Search','720p',this)">
-       <span class="res-opt-title">
-        720p
-       </span>
-       <span class="res-opt-desc">
-        Kualitas standar HD
-       </span>
-      </div>
-     </div>
-    </div>
-   </div>
-   <div class="input-wrapper">
-    <input id="kw" placeholder="Keyword pencarian..." type="text"/>
-    <span class="clear-btn" id="clear-kw" onclick="clearInput('kw')">✕</span>
-   </div>
-   <div class="input-wrapper">
-    <input id="filter" placeholder="Filter durasi: <1m, >3m (opsional)" type="text"/>
-    <span class="clear-btn" id="clear-filter" onclick="clearInput('filter')">✕</span>
-   </div>
-   <div class="input-wrapper">
-    <input id="limit" max="50" min="1" placeholder="jumlah hasil(1-50)" type="number" value=""/>
-    <span class="clear-btn" id="clear-limit" onclick="clearInput('limit')">✕</span>
-   </div>
-   <button class="btn-primary" id="btn-search" onclick="doSearch()">
-    Cari Sekarang
-   </button>
-   <div class="status-txt" id="search-status">
-   </div>
-   <div id="results">
-   </div>
-  </div>
-  <div class="card">
-   <div class="card-header">
-    <div class="card-title">
-     Download by URL
-    </div>
-    <div class="res-trigger" id="triggerUrl">
-     <button class="res-btn" onclick="togglePopup('popupUrl')">
-      <span class="rainbow-text" id="labelUrl">
-       HYPE v1.2
-      </span>
-      <span class="arrow">
-       ▼
-      </span>
-     </button>
-     <div class="res-popup" id="popupUrl">
-      <div class="res-option selected" onclick="pickRes('Url','HYPE v1.2',this)">
-       <span class="res-opt-title rainbow-text">
-        HYPE v1.2
-       </span>
-       <span class="res-opt-desc">
-        Cocok untuk mengunduh video dengan resolusi tak terbatas
-       </span>
-      </div>
-      <div class="res-divider">
-      </div>
-      <div class="res-option" onclick="pickRes('Url','720',this)">
-       <span class="res-opt-title">
-        720p
-       </span>
-       <span class="res-opt-desc">
-        Kualitas standar HD
-       </span>
-      </div>
-     </div>
-    </div>
-   </div>
-   <div class="input-wrapper">
-    <input id="dl-url" placeholder="https://vm.tiktok.com/..." type="text"/>
-    <span class="clear-btn" id="clear-dl-url" onclick="clearInput('dl-url')">✕</span>
-   </div>
-   <div id="url-preview-container"></div>
-   <button class="btn-primary" id="btn-dlurl" onclick="doDownloadUrl()">
-    Download Langsung
-   </button>
-   <div class="status-txt" id="url-status">
-   </div>
-  </div>
-  <div id="dl-container">
-  </div>
-  <script>
-  function triggerHardRefresh() {
-    localStorage.clear();
-    sessionStorage.clear();
-    const url = new URL(window.location.origin + window.location.pathname);
-    url.searchParams.set('refresh', Date.now());
-    window.location.replace(url.toString());
-  }
-
-  const resSelected = { Search: 'HYPE v1.2', Url: 'HYPE v1.2' };
-
-  document.addEventListener('click', function(e) {
-    ['popupSearch','popupUrl'].forEach(id => {
-      const popup = document.getElementById(id);
-      if (popup && !popup.closest('.res-trigger').contains(e.target)) {
-        popup.classList.remove('open');
-      }
-    });
-  });
-
-  function togglePopup(popupId) {
-    const popup = document.getElementById(popupId);
-    const isOpen = popup.classList.contains('open');
-    document.querySelectorAll('.res-popup').forEach(p => p.classList.remove('open'));
-    if (!isOpen) popup.classList.add('open');
-  }
-
-  function pickRes(section, res, el) {
-    resSelected[section] = res;
-    const label = document.getElementById('label' + section);
-    label.innerText = res;
+    # Perbaikan: TikTok butuh Referer ke situs utamanya, bukan ke subdomain video
+    if "tiktok.com" in url or "ttwstatic.com" in url:
+        headers["Referer"] = "https://www.tiktok.com/"
+        headers["Origin"] = "https://www.tiktok.com"
+    else:
+        domain = re.search(r'https?://([^/]+)', url)
+        if domain:
+            headers["Origin"] = f"https://{domain.group(1)}"
+            headers["Referer"] = f"https://{domain.group(1)}/"
     
-    if (res.includes('HYPE')) {
-      label.classList.add('rainbow-text');
-    } else {
-      label.classList.remove('rainbow-text');
-    }
-
-    el.closest('.res-popup').querySelectorAll('.res-option').forEach(o => o.classList.remove('selected'));
-    el.classList.add('selected');
-    el.closest('.res-popup').classList.remove('open');
-  }
-
-  let lastUrl = '';
-  let currentPreviewData = null; // Sinkronisasi Data (Optimalisasi Bandwidth)
-
-  function clearInput(id) {
-    const el = document.getElementById(id);
-    el.value = '';
-    el.focus();
-    toggleClearBtn(id);
-    if (id === 'dl-url') {
-      document.getElementById('url-preview-container').style.display = 'none';
-      document.getElementById('btn-dlurl').textContent = 'Download Langsung';
-      lastUrl = '';
-      currentPreviewData = null; // Perbaikan Logika Input & Re-Download
-    }
-  }
-
-  function toggleClearBtn(id) {
-    const el = document.getElementById(id);
-    const btn = document.getElementById('clear-' + id);
-    if (btn) btn.style.display = el.value ? 'block' : 'none';
-    if (id === 'dl-url' && el.value.startsWith('http')) {
-       setTimeout(() => autoPreview(el.value), 500);
-    }
-  }
-
-  async function autoPreview(url) {
-    if (url === lastUrl) return;
-    if (!url.includes('tiktok.com') && !url.includes('http')) return;
-    lastUrl = url;
-
-    const container = document.getElementById('url-preview-container');
-    const btnDl = document.getElementById('btn-dlurl');
-
-    container.style.display = 'block';
-    container.innerHTML = '<div style="font-size:11px; color:var(--muted)">🔍 Mengintip link...</div>';
-    btnDl.disabled = true;
-    btnDl.textContent = 'sedang di proses';
-
-    try {
-      const resp = await fetch('/api/download_url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, resolution: resSelected['Url'] })
-      });
-      const data = await resp.json();
-      if (data.status === 'success') {
-        currentPreviewData = data; // Simpan ke cache lokal
-        container.innerHTML = `
-          <div class="preview-card">
-            <img src="${data.cover}" class="preview-thumb">
-            <div class="preview-info">
-              <div class="preview-title">${data.title}</div>
-              <div class="preview-meta">
-                <span class="meta-tag">👤 ${data.author}</span>
-                <span class="meta-tag">⏱ ${data.duration}</span>
-                <span class="meta-tag">💾 ${data.size}</span>
-              </div>
-            </div>
-            <div style="color:var(--accent); font-size:18px;">⬇️</div>
-          </div>
-        `;
-        btnDl.disabled = false;
-        btnDl.textContent = 'dowload sekarang';
-      } else {
-        container.style.display = 'none';
-        btnDl.disabled = false;
-        btnDl.textContent = 'Download Langsung';
-        currentPreviewData = null;
-      }
-    } catch(e) {
-      container.style.display = 'none';
-      btnDl.disabled = false;
-      btnDl.textContent = 'Download Langsung';
-      currentPreviewData = null;
-    }
-  }
-
-  ['kw', 'filter', 'limit', 'dl-url'].forEach(id => {
-    document.getElementById(id).addEventListener('input', () => toggleClearBtn(id));
-  });
-
-  function createBubble(title) {
-    const wrap = document.getElementById('dl-container');
-    const el = document.createElement('div');
-    el.className = 'dl-bubble';
-    const barId = 'bar-' + Date.now();
-    el.innerHTML = `
-      <div class="dl-bubble-icon loading">⬇️</div>
-      <div class="dl-bubble-text">
-        <div class="dl-bubble-label"></div>
-        <div class="dl-bubble-sub">Mengunduh: 0%</div>
-        <div class="dl-progress"><div class="dl-progress-bar" id="${barId}"></div></div>
-      </div>
-      <button class="dl-close" onclick="closeBubble(this)">✕</button>
-    `;
-    el.querySelector('.dl-bubble-label').textContent = title;
-    wrap.appendChild(el);
-    const bar = el.querySelector('#' + barId);
-    const sub = el.querySelector('.dl-bubble-sub');
+    headers.update({
+        "Accept-Encoding": "identity",
+        "Range": "bytes=0-"
+    })
     
-    return {
-      updateProgress(p) {
-        bar.style.width = p + '%';
-        sub.textContent = 'Mengunduh: ' + Math.round(p) + '%';
-      },
-      setSuccess() {
-        el.querySelector('.dl-bubble-icon').textContent = '✅';
-        el.querySelector('.dl-bubble-icon').className = 'dl-bubble-icon success';
-        sub.textContent = 'Selesai — Tersimpan!';
-        bar.className = 'dl-progress-bar done';
-        setTimeout(() => fadeOutBubble(el), 5000);
-      },
-      setError(msg) {
-        el.querySelector('.dl-bubble-icon').textContent = '❌';
-        el.querySelector('.dl-bubble-icon').className = 'dl-bubble-icon error';
-        sub.textContent = msg || 'Gagal';
-        bar.className = 'dl-progress-bar fail';
-      }
-    };
-  }
+    try:
+        r = session.get(url, stream=True, timeout=30, headers=headers, allow_redirects=True)
+        content_type = r.headers.get('Content-Type', '').lower()
+        content_length = int(r.headers.get('Content-Length', 0))
+        
+        # Guard: Jika ukuran file terlalu kecil (< 500KB), kemungkinan besar itu bukan video asli
+        # Video TikTok rata-rata di atas 1MB. Kalau cuma 160 byte (0,16KB), itu pesan error.
+        if content_length > 0 and content_length < 500000 and ('text/html' in content_type or 'text/plain' in content_type):
+            logger.warning(f"⚠️ Deteksi file korup/kecil ({content_length} bytes)")
+            return None, False
 
-  function closeBubble(btn) { fadeOutBubble(btn.closest('.dl-bubble')); }
-  function fadeOutBubble(el) {
-    if (!el) return;
-    el.classList.add('fade-out');
-    setTimeout(() => el.remove(), 400);
-  }
+        # Validasi: Jika server asal mengirimkan HTML (error/captcha), blokir!
+        if 'text/html' in content_type or 'application/json' in content_type:
+            logger.warning(f"⚠️ Blokir non-video content: {content_type}")
+            if fallback_url:
+                return session.get(fallback_url, stream=True, timeout=30, headers=headers, allow_redirects=True), True
+            return None, False
+            
+        return r, False
+    except Exception as e:
+        logger.error(f"Stream Error: {e}")
+        if fallback_url:
+            return session.get(fallback_url, stream=True, timeout=30, headers=headers, allow_redirects=True), True
+        raise e
 
-  function handleRealDownload(dUrl, title) {
-    const bubble = createBubble(title);
-    try {
-      // Kita gunakan window.open untuk request awal, agar browser tidak otomatis
-      // mengunduh pesan error sebagai file .html jika terjadi kegagalan server.
-      const a = document.createElement('a');
-      a.href = dUrl;
-      // Jangan kasih atribut download dulu untuk testing
-      a.target = '_blank';
-      a.download = title.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".mp4";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      
-      // Update gelembung dengan delay untuk mensimulasikan proses
-      setTimeout(() => {
-          bubble.updateProgress(100);
-          bubble.setSuccess();
-      }, 1500);
-    } catch (e) {
-      bubble.setError(e.message);
-    }
-  }
+def format_durasi(detik):
+    if detik is None: return "?"
+    try:
+        m, s = divmod(int(detik), 60)
+        return f"{m}m{s:02d}s"
+    except: return "?"
 
-  function getDownloadUrl(v, resolution) {
-    let vUrl = (resolution === 'HYPE v1.2') ? (v.hdplay || v.play) : (v.play || v.hdplay);
-    if (!vUrl) return '';
-    const t = new Date().getTime(); // Penanganan Error "File Korup" (nocache)
-    return `/api/get_video?url=${encodeURIComponent(vUrl)}&title=${encodeURIComponent(v.title)}&mode=${encodeURIComponent(resolution)}&nocache=${t}`;
-  }
+@app.route('/')
+def index():
+    return send_file('vinder.html')
 
-  async function doSearch() {
-    const kw = document.getElementById('kw').value.trim();
-    if (!kw) return;
-    const btn = document.getElementById('btn-search');
-    const status = document.getElementById('search-status');
-    const resultsEl = document.getElementById('results');
-    const resolution = resSelected['Search'];
-    btn.disabled = true;
-    btn.textContent = 'Mencari...';
-    status.textContent = 'Menghubungi server...';
-    resultsEl.innerHTML = '';
-    try {
-      const resp = await fetch('/api/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          keyword: kw,
-          limit: parseInt(document.getElementById('limit').value) || 5,
-          filter: document.getElementById('filter').value.trim(),
-          resolution
-        })
-      });
-      const data = await resp.json();
-      if (data.status !== 'success') throw new Error(data.msg);
-      status.textContent = `${data.data.length} video ditemukan`;
-      status.className = 'status-txt ok';
-      data.data.forEach(v => {
-        const dUrl = getDownloadUrl(v, resolution);
-        const div = document.createElement('div');
-        div.className = 'video-item';
-        div.innerHTML = `
-          <img src="${v.cover}" class="video-thumb">
-          <div class="video-info">
-            <div class="video-title">${v.title}</div>
-            <div class="video-meta">
-              <span class="meta-tag">⏱ ${v.duration}</span>
-              <span class="meta-tag">💾 ${v.size}</span>
-            </div>
-            <a href="${dUrl}" download class="btn-dl" style="text-decoration: none;" onclick="createBubble('${v.title.replace(/'/g,"")}').setSuccess()">
-              ⬇️ Download
-            </a>
-          </div>
-        `;
-        resultsEl.appendChild(div);
-      });
-    } catch (e) {
-      status.textContent = 'Error: ' + e.message;
-      status.className = 'status-txt err';
-    } finally {
-      btn.disabled = false;
-      btn.textContent = 'Cari Sekarang';
-    }
-  }
+@app.route('/api/search', methods=['POST'])
+def search_videos_api():
+    data = request.json
+    keyword = data.get('keyword')
+    limit = data.get('limit', 10)
+    logger.info(f"🔍 Searching for: {keyword}")
+    try:
+        # Gunakan session untuk efisiensi
+        resp = session.post("https://www.tikwm.com/api/feed/search", 
+                             data={"keywords": keyword, "count": limit, "HD": 1},
+                             timeout=30)
+        resp.raise_for_status()
+        json_data = resp.json()
+        
+        if json_data.get('code') != 0:
+            msg = json_data.get('msg', 'API TikWM return non-zero code')
+            logger.error(f"❌ TikWM API Error: {msg}")
+            return jsonify({"status": "error", "msg": f"TikWM API: {msg}"})
 
-  async function doDownloadUrl() {
-    const url = document.getElementById('dl-url').value.trim();
-    if (!url) return;
-    const resolution = resSelected['Url'];
+        videos = json_data.get('data', {}).get('videos', [])
+        results = []
+        for v in videos:
+            cover_url = v.get('origin_cover') or v.get('cover') or ''
+            size_bytes = v.get('size', 0)
+            size_mb = round(size_bytes / (1024 * 1024), 2) if size_bytes else "?"
+            
+            results.append({
+                'title': v.get('title', 'Video TikTok'),
+                'duration': format_durasi(v.get('duration')),
+                'play': v.get('play', ''),
+                'hdplay': v.get('hdplay', '') or v.get('play', ''),
+                'cover': cover_url,
+                'size': f"{size_mb} MB"
+            })
+        logger.info(f"✅ Found {len(results)} videos")
+        return jsonify({"status": "success", "data": results})
+    except Exception as e:
+        logger.error(f"Search Error: {str(e)}")
+        return jsonify({"status": "error", "msg": str(e)})
+
+@app.route('/api/download_url', methods=['POST'])
+def download_url_api():
+    data = request.json
+    url_input = data.get('url')
+    logger.info(f"🔗 HYPE Processing: {url_input}")
     
-    // Optimalisasi Bandwidth: Gunakan data cache jika tersedia
-    if (currentPreviewData && lastUrl === url) {
-        const dUrl = getDownloadUrl(currentPreviewData, resolution);
-        handleRealDownload(dUrl, currentPreviewData.title);
-        return;
+    # Konfigurasi yt-dlp dikunci untuk kualitas maksimal
+    ydl_opts = {
+        'format': 'bestvideo+bestaudio/best',
+        'quiet': True,
+        'no_warnings': True,
+        'noplaylist': True,
+        'user_agent': TIKTOK_UA,
+        'http_headers': DEFAULT_HEADERS
     }
+    
+    try:
+        if 'tiktok.com' in url_input:
+            api_url = f"https://www.tikwm.com/api/?url={url_input}"
+            resp = requests.get(api_url).json()
+            if resp.get('code') == 0:
+                v = resp['data']
+                return jsonify({
+                    "status": "success",
+                    "title": v.get('title', 'TikTok Video'),
+                    "cover": v.get('cover'),
+                    "author": v.get('author', {}).get('nickname', 'User'),
+                    "duration": f"{v.get('duration', 0)}s",
+                    "size": f"{(v.get('size', 0)/1024/1024):.2f}MB",
+                    "play": v.get('play'),
+                    "hdplay": v.get('hdplay'),
+                    "music": v.get('music')
+                })
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url_input, download=False)
+            return jsonify({
+                "status": "success",
+                "title": info.get('title', 'Video'),
+                "cover": info.get('thumbnail'),
+                "author": info.get('uploader', 'Unknown'),
+                "duration": f"{info.get('duration', 0)}s",
+                "size": "N/A",
+                "play": info.get('url'),
+                "hdplay": info.get('url')
+            })
+    except Exception as e:
+        return jsonify({"status": "error", "msg": str(e)})
 
-    const btn = document.getElementById('btn-dlurl');
-    btn.disabled = true;
-    btn.textContent = 'Memproses...';
-    try {
-      const resp = await fetch('/api/download_url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, resolution })
-      });
-      const data = await resp.json();
-      if (data.status === 'success') {
-        const dUrl = getDownloadUrl(data, resolution);
-        handleRealDownload(dUrl, data.title);
-      } else {
-        throw new Error(data.msg);
-      }
-    } catch (e) {
-      const bubble = createBubble('URL Error');
-      bubble.setError(e.message);
-    } finally {
-      btn.disabled = false;
-      btn.textContent = 'dowload sekarang';
-    }
-  }
+@app.route('/api/get_video')
+def get_video_api():
+    video_url = request.args.get('url')
+    fallback_url = request.args.get('fallback')
+    title = request.args.get('title', 'video')
+    
+    if not video_url:
+        return "URL Kosong", 400
 
-  document.getElementById('kw').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
-  document.getElementById('dl-url').addEventListener('keydown', e => { if (e.key === 'Enter') doDownloadUrl(); });
-  </script>
- </body>
-</html>
+    try:
+        r, used_fallback = fetch_video_stream(video_url, fallback_url)
+        
+        if r is None or r.status_code >= 400:
+             return "Gagal: Video tidak ditemukan atau link kadaluarsa (Access Denied).", 403
+
+        content_type = r.headers.get('Content-Type', '').lower()
+        if 'text/html' in content_type:
+             return "Gagal: Server mengirimkan file korup (HTML).", 403
+
+        safe_title = re.sub(r'[^a-zA-Z0-9]', '_', title)[:40] or 'video'
+        
+        headers = {
+            'Content-Type': content_type,
+            'Content-Disposition': f'attachment; filename="{safe_title}.mp4"',
+            'Cache-Control': 'no-cache'
+        }
+        
+        return Response(stream_with_context(r.iter_content(chunk_size=1024*1024)), headers=headers)
+    except Exception as e:
+        return f"Error: {str(e)}", 500
+
+if __name__ == "__main__":
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, threaded=True)
