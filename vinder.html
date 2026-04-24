@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
   <title>
-   VidFinder System
+   Vinder
   </title>
   <style>
    @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@400;500;600&display=swap');
@@ -25,7 +25,7 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
   body {
-    background: var(--bg);
+    background-color: #000000;
     color: var(--text);
     font-family: 'DM Sans', sans-serif;
     min-height: 100vh;
@@ -59,6 +59,7 @@
     text-transform: uppercase;
     letter-spacing: 1px;
     margin-bottom: 14px;
+    color: #ebebebff;
   }
 
   input {
@@ -382,6 +383,7 @@
 
   /* ===== ELEGANT GRADIENT EFFECT ===== */
   .rainbow-text {
+      font-weight: bold;
     background: linear-gradient(
       to right, 
       #9333ea, /* Ungu */
@@ -444,15 +446,12 @@
    zakdev_&gt;
   </h2>
   <h1>
-   🎬 Vid
-   <span>
-    Finder
-   </span>
+    Vinder 
   </h1>
   <div class="card">
    <div class="card-header">
     <div class="card-title">
-     🔍 Cari Video
+      Cari Video
     </div>
     <div class="res-trigger" id="triggerSearch">
      <button class="res-btn" onclick="togglePopup('popupSearch')">
@@ -508,7 +507,7 @@
   <div class="card">
    <div class="card-header">
     <div class="card-title">
-     🔗 Download by URL
+     Download by URL
     </div>
     <div class="res-trigger" id="triggerUrl">
      <button class="res-btn" onclick="togglePopup('popupUrl')">
