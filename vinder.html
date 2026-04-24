@@ -728,20 +728,28 @@
   function handleRealDownload(dUrl, title) {
     const bubble = createBubble(title);
     try {
+      // Kita gunakan window.open untuk request awal, agar browser tidak otomatis
+      // mengunduh pesan error sebagai file .html jika terjadi kegagalan server.
       const a = document.createElement('a');
       a.href = dUrl;
-      a.download = '';
+      // Jangan kasih atribut download dulu untuk testing
+      a.target = '_blank';
+      a.download = title.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".mp4";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      bubble.updateProgress(100);
-      bubble.setSuccess();
+      
+      // Update gelembung dengan delay untuk mensimulasikan proses
+      setTimeout(() => {
+          bubble.updateProgress(100);
+          bubble.setSuccess();
+      }, 1500);
     } catch (e) {
       bubble.setError(e.message);
     }
   }
 
- function getDownloadUrl(v, resolution) {
+  function getDownloadUrl(v, resolution) {
     let vUrl = (resolution === 'HYPE v1.2') ? (v.hdplay || v.play) : (v.play || v.hdplay);
     if (!vUrl) return '';
     const t = new Date().getTime(); // Penanganan Error "File Korup" (nocache)
