@@ -730,7 +730,8 @@
     }
     
     if (!vUrl) return '';
- const t = new Date().getTime();
+    
+    const t = new Date().getTime();
     return `/api/get_video?url=${encodeURIComponent(vUrl)}&title=${encodeURIComponent(v.title)}&mode=${encodeURIComponent(resolution)}&t=${t}`;
   }
 
