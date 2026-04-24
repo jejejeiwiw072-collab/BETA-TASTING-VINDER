@@ -28,11 +28,16 @@ session = requests.Session()
 
 def fetch_video_stream(url, fallback_url=None):
     headers = DEFAULT_HEADERS.copy()
-    # Menentukan Origin & Referer secara dinamis untuk menembus proteksi link
-    domain = re.search(r'https?://([^/]+)', url)
-    if domain:
-        headers["Origin"] = f"https://{domain.group(1)}"
-        headers["Referer"] = f"https://{domain.group(1)}/"
+    
+    # Perbaikan: TikTok butuh Referer ke situs utamanya, bukan ke subdomain video
+    if "tiktok.com" in url or "ttwstatic.com" in url:
+        headers["Referer"] = "https://www.tiktok.com/"
+        headers["Origin"] = "https://www.tiktok.com"
+    else:
+        domain = re.search(r'https?://([^/]+)', url)
+        if domain:
+            headers["Origin"] = f"https://{domain.group(1)}"
+            headers["Referer"] = f"https://{domain.group(1)}/"
     
     headers.update({
         "Accept-Encoding": "identity",
@@ -42,12 +47,18 @@ def fetch_video_stream(url, fallback_url=None):
     try:
         r = session.get(url, stream=True, timeout=30, headers=headers, allow_redirects=True)
         content_type = r.headers.get('Content-Type', '').lower()
+        content_length = int(r.headers.get('Content-Length', 0))
         
+        # Guard: Jika ukuran file terlalu kecil (< 500KB), kemungkinan besar itu bukan video asli
+        # Video TikTok rata-rata di atas 1MB. Kalau cuma 160 byte (0,16KB), itu pesan error.
+        if content_length > 0 and content_length < 500000 and ('text/html' in content_type or 'text/plain' in content_type):
+            logger.warning(f"⚠️ Deteksi file korup/kecil ({content_length} bytes)")
+            return None, False
+
         # Validasi: Jika server asal mengirimkan HTML (error/captcha), blokir!
         if 'text/html' in content_type or 'application/json' in content_type:
             logger.warning(f"⚠️ Blokir non-video content: {content_type}")
             if fallback_url:
-                logger.warning("Trying fallback...")
                 return session.get(fallback_url, stream=True, timeout=30, headers=headers, allow_redirects=True), True
             return None, False
             
