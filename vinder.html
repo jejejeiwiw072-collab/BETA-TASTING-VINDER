@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="id">
  <head>
@@ -7,6 +8,51 @@
    Vinder
   </title>
   <style>
+   .card-desc {
+      font-size: 14px;
+      color: #888;
+      line-height: 1.5;
+    }
+
+  .audio-card {
+    width: 100%;
+    background-color: black;
+    border: 1px solid #473c76;
+    box-shadow: 0px 0px 5px 0px #42308f;
+    border-radius: 12px;
+    overflow: hidden;
+    margin-top: 15px;
+    margin-bottom: 16px;
+  }
+
+  .audio-card img {
+    width: 100%;
+    height: 180px;
+    object-fit: cover;
+    display: block;
+  }
+
+  .audio-card-content {
+    padding: 16px;
+  }
+
+  .audio-card-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    color: #ebebeb;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+
+  .audio-card-desc {
+    font-size: 13px;
+    color: #888;
+    line-height: 1.5;
+  }
+ 
+  
    @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@400;500;600&display=swap');
 
   :root {
@@ -455,17 +501,16 @@
     font-size: 22px;
     letter-spacing: -0.5px;
     position: absolute;
-    top: 17px;
-    left: 48px;
+    top: 20px;
+    left: 49px;
     display: flex;
     align-items: center;
     gap: 10px;
-    
   }">
     inder 
   </h2>
-   	<img src="https://dusty-aquamarine-inqxmkgfwd.edgeone.app/20260424_191010.jpg" style="width: 60px; height: 60px; position: absolute; border-radius: 120px;
-   	   top: 4px;
+   	<img src="20260424_191010.jpg" style="width: 60px; height: 60px; position: absolute; border-radius: 120px;
+   	   top: 2px;
    	   left: 2px;
    	   z-index: -1;">
   <div class="card">
@@ -573,6 +618,16 @@
   </div>
   <div id="dl-container">
   </div>
+
+  <!-- NEXT AUDIO DOWNLOADER — paling bawah -->
+  <div class="audio-card">
+    <img src="AIRetouch_20260424_223611516.png" alt="Audio Downloader Preview">
+    <div class="audio-card-content">
+      <div class="audio-card-title">NEXT <span style="color: #2563eb;">AUDIO</span> DOWNLOADER</div>
+      <div class="audio-card-desc">Segera hadir: fitur MP3 dengan tampilan dan performa yang lebih modern.</div>
+    </div>
+  </div>
+
   <script>
   function triggerHardRefresh() {
     localStorage.clear();
@@ -706,7 +761,7 @@
       <div class="dl-bubble-icon loading">⬇️</div>
       <div class="dl-bubble-text">
         <div class="dl-bubble-label"></div>
-        <div class="dl-bubble-sub">Mengunduh: 0%</div>
+           <div class="dl-bubble-sub">Mengunduh: 0%</div>
         <div class="dl-progress"><div class="dl-progress-bar" id="${barId}"></div></div>
       </div>
       <button class="dl-close" onclick="closeBubble(this)">✕</button>
@@ -871,3 +926,4 @@
   </script>
  </body>
 </html>
+    
