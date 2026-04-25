@@ -11,7 +11,7 @@ from flask_cors import CORS
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='.', static_url_path='')
 CORS(app)
 
 # User-Agent khusus mobile untuk mendapatkan bitrate lebih tinggi (HYPE v1.3)
