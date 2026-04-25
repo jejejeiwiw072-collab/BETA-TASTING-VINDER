@@ -15,12 +15,12 @@
 
   .audio-card {
     width: 100%;
-    background-color: black;
-    border: 1px solid #473c76;
-    box-shadow: 0px 0px 5px 0px #42308f;
+    background-color: #1a1a1a;
+    border: 1px solid var(--border);
     border-radius: 12px;
     overflow: hidden;
-    margin-top: 20px;
+    margin-top: 16px;
+    margin-bottom: 16px;
   }
 
   .audio-card img {
@@ -499,16 +499,17 @@
     font-size: 22px;
     letter-spacing: -0.5px;
     position: absolute;
-    top: 20px;
-    left: 49px;
+    top: 17px;
+    left: 48px;
     display: flex;
     align-items: center;
     gap: 10px;
+    
   }">
-    vinder 
+    inder 
   </h2>
    	<img src="20260424_191010.jpg" style="width: 60px; height: 60px; position: absolute; border-radius: 120px;
-   	   top: 2px;
+   	   top: 4px;
    	   left: 2px;
    	   z-index: -1;">
   <div class="card">
@@ -519,16 +520,16 @@
     <div class="res-trigger" id="triggerSearch">
      <button class="res-btn" onclick="togglePopup('popupSearch')">
       <span class="rainbow-text" id="labelSearch">
-       HYPE v1.3
+       HYPE v1.2
       </span>
       <span class="arrow">
        ▼
       </span>
      </button>
      <div class="res-popup" id="popupSearch">
-      <div class="res-option selected" onclick="pickRes('Search','HYPE v1.3',this)">
+      <div class="res-option selected" onclick="pickRes('Search','HYPE v1.2',this)">
        <span class="res-opt-title rainbow-text">
-        HYPE v1.3
+        HYPE v1.2
        </span>
        <span class="res-opt-desc">
         Cocok untuk mengunduh video dengan resolusi tak terbatas
@@ -575,16 +576,16 @@
     <div class="res-trigger" id="triggerUrl">
      <button class="res-btn" onclick="togglePopup('popupUrl')">
       <span class="rainbow-text" id="labelUrl">
-       HYPE v1.3
+       HYPE v1.2
       </span>
       <span class="arrow">
        ▼
       </span>
      </button>
      <div class="res-popup" id="popupUrl">
-      <div class="res-option selected" onclick="pickRes('Url','HYPE v1.3',this)">
+      <div class="res-option selected" onclick="pickRes('Url','HYPE v1.2',this)">
        <span class="res-opt-title rainbow-text">
-        HYPE v1.3
+        HYPE v1.2
        </span>
        <span class="res-opt-desc">
         Cocok untuk mengunduh video dengan resolusi tak terbatas
@@ -619,7 +620,7 @@
 
   <!-- NEXT AUDIO DOWNLOADER — paling bawah -->
   <div class="audio-card">
-    <img src="AIRetouch_20260424_223611516.png" alt="Audio Downloader Preview" style=" pointer-events: none;">
+    <img src="AIRetouch_20260424_223611516.png" alt="Audio Downloader Preview">
     <div class="audio-card-content">
       <div class="audio-card-title">NEXT <span style="color: #2563eb;">AUDIO</span> DOWNLOADER</div>
       <div class="audio-card-desc">Segera hadir: fitur MP3 dengan tampilan dan performa yang lebih modern.</div>
@@ -635,7 +636,7 @@
     window.location.replace(url.toString());
   }
 
-  const resSelected = { Search: 'HYPE v1.3', Url: 'HYPE v1.3' };
+  const resSelected = { Search: 'HYPE v1.2', Url: 'HYPE v1.2' };
 
   document.addEventListener('click', function(e) {
     ['popupSearch','popupUrl'].forEach(id => {
@@ -759,7 +760,7 @@
       <div class="dl-bubble-icon loading">⬇️</div>
       <div class="dl-bubble-text">
         <div class="dl-bubble-label"></div>
-    <div class="dl-bubble-sub">Mengunduh: 0%</div>
+        <div class="dl-bubble-sub">Mengunduh: 0%</div>
         <div class="dl-progress"><div class="dl-progress-bar" id="${barId}"></div></div>
       </div>
       <button class="dl-close" onclick="closeBubble(this)">✕</button>
@@ -822,7 +823,7 @@
   }
 
   function getDownloadUrl(v, resolution) {
-    let vUrl = (resolution === 'HYPE v1.3') ? (v.hdplay || v.play) : (v.play || v.hdplay);
+    let vUrl = (resolution === 'HYPE v1.2') ? (v.hdplay || v.play) : (v.play || v.hdplay);
     if (!vUrl) return '';
     const t = new Date().getTime(); // Penanganan Error "File Korup" (nocache)
     return `/api/get_video?url=${encodeURIComponent(vUrl)}&title=${encodeURIComponent(v.title)}&mode=${encodeURIComponent(resolution)}&nocache=${t}`;
