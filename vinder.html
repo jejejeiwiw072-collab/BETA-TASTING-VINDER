@@ -1236,7 +1236,8 @@
   async function handleRealDownload(dUrl, title) {
     const bubble = createBubble(title);
     const ext = selectedFormat === 'mp3' ? '.mp3' : '.mp4';
-    const filename = title.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ext;
+    const safeTitle = title.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 60) || 'vinder';
+    const filename = `[Vinder].${safeTitle}${ext}`;
 
     if (selectedFormat === 'mp3') {
       // MP3: fetch dulu — tunggu backend selesai download + konversi + embed cover
