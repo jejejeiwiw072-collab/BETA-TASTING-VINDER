@@ -78,7 +78,6 @@ def get_meta_via_tikwm(tiktok_url):
         data = resp.json()
         if data.get('code') == 0:
             v = data['data']
-            # Prioritas: hdplay > play (video stream asli, bukan music)
             video_url = v.get('hdplay') or v.get('play')
             cover_url = v.get('origin_cover') or v.get('cover')
             title     = v.get('title', 'audio')
@@ -89,8 +88,8 @@ def get_meta_via_tikwm(tiktok_url):
 
 def extract_audio_from_video(video_url, out_mp3, out_tmpl):
     """
-    Download video stream lalu extract audio-nya via ffmpeg pipe.
-    Tidak simpan file video — langsung pipe ke ffmpeg.
+    Download video ke file temp dulu, lalu extract audio via ffmpeg.
+    Lebih stabil dari pipe — hindari timeout Railway.
     """
     headers = DEFAULT_HEADERS.copy()
     headers.update({
@@ -99,64 +98,49 @@ def extract_audio_from_video(video_url, out_mp3, out_tmpl):
         "Accept-Encoding": "identity",
     })
 
-    logger.info(f"⬇️ Streaming video untuk extract audio...")
-    video_resp = session.get(video_url, headers=headers, timeout=60, stream=True)
+    out_vid = out_tmpl + '.mp4'
+
+    logger.info("⬇️ Download video ke temp...")
+    video_resp = session.get(video_url, headers=headers, timeout=90, stream=True)
     video_resp.raise_for_status()
 
-    # Pipe stream langsung ke ffmpeg → extract audio → simpan MP3
-    # ffmpeg baca dari stdin (-i pipe:0), output MP3 ke file
-    ffmpeg_cmd = [
+    with open(out_vid, 'wb') as f:
+        for chunk in video_resp.iter_content(chunk_size=1024 * 512):
+            f.write(chunk)
+
+    logger.info("🎬 Extract audio dari file temp...")
+    result = subprocess.run([
         'ffmpeg', '-y',
-        '-i', 'pipe:0',          # baca dari stdin
-        '-vn',                    # skip video track
+        '-i', out_vid,
+        '-vn',
         '-acodec', 'libmp3lame',
         '-ab', '192k',
         '-ar', '44100',
         out_mp3
-    ]
+    ], capture_output=True, timeout=120)
 
-    proc = subprocess.Popen(
-        ffmpeg_cmd,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
-    )
+    try: os.remove(out_vid)
+    except: pass
 
-    try:
-        for chunk in video_resp.iter_content(chunk_size=1024 * 512):
-            proc.stdin.write(chunk)
-        proc.stdin.close()
-        proc.wait(timeout=120)
-    except Exception as e:
-        proc.kill()
-        raise RuntimeError(f"ffmpeg pipe error: {e}")
+    if result.returncode != 0:
+        err = result.stderr.decode(errors='ignore')
+        raise RuntimeError(f"ffmpeg gagal: {err[-300:]}")
 
-    if proc.returncode != 0:
-        err = proc.stderr.read().decode(errors='ignore')
-        raise RuntimeError(f"ffmpeg gagal (code {proc.returncode}): {err[-300:]}")
+    logger.info("✅ Audio berhasil di-extract")
 
-    logger.info(f"✅ Audio berhasil di-extract: {out_mp3}")
-
-def extract_frame_at_2s(video_url, out_tmpl):
+def extract_frame_at_2s(video_path, out_tmpl):
     """
-    Ambil frame video di detik ke-2 sebagai cover art via ffmpeg.
+    Ambil frame di detik ke-2 dari file video lokal sebagai cover art.
     Fallback ke None kalau gagal.
     """
     cover_path = out_tmpl + '_cover.jpg'
-    headers_str = '\r\n'.join([f"{k}: {v}" for k, v in {
-        **DEFAULT_HEADERS,
-        "Referer": "https://www.tiktok.com/",
-        "Origin": "https://www.tiktok.com",
-    }.items()])
-
     try:
         subprocess.run([
             'ffmpeg', '-y',
-            '-headers', headers_str,
-            '-ss', '2',               # seek ke detik ke-2
-            '-i', video_url,
-            '-vframes', '1',          # ambil 1 frame
-            '-q:v', '2',              # kualitas JPEG tinggi
+            '-ss', '2',
+            '-i', video_path,
+            '-vframes', '1',
+            '-q:v', '2',
             cover_path
         ], check=True, capture_output=True, timeout=30)
 
@@ -164,8 +148,7 @@ def extract_frame_at_2s(video_url, out_tmpl):
             logger.info("🖼️ Frame detik ke-2 berhasil diambil")
             return cover_path
     except Exception as e:
-        logger.warning(f"⚠️ Gagal ambil frame detik ke-2: {e}")
-
+        logger.warning(f"⚠️ Gagal ambil frame: {e}")
     return None
 
 def embed_cover(mp3_path, cover_path, out_tmpl):
@@ -313,31 +296,55 @@ def get_mp3_api():
     uid      = str(int(time.time() * 1000))
     out_tmpl = f'/tmp/vinder_{uid}'
     out_mp3  = out_tmpl + '.mp3'
+    out_vid  = out_tmpl + '.mp4'
 
     def do_cleanup():
-        for suffix in ['.mp3', '.jpg', '_cover.jpg', '_tagged.mp3', '.m4a', '.webm', '.opus']:
+        for suffix in ['.mp3', '.mp4', '_cover.jpg', '_tagged.mp3', '.m4a', '.webm', '.opus']:
             f = out_tmpl + suffix
             if os.path.exists(f):
                 try: os.remove(f)
                 except: pass
 
     try:
-        # ── STEP 1: Ambil metadata dari TikWM (video URL, cover, title) ──
+        # ── STEP 1: Ambil metadata dari TikWM ──
         logger.info(f"🎵 Ambil metadata via TikWM: {tiktok_url}")
         video_url, cover_url, api_title = get_meta_via_tikwm(tiktok_url)
         title = api_title or title
 
         if video_url:
-            # ── STEP 2: Extract audio langsung dari video stream via ffmpeg pipe ──
-            # Ini ambil audio ASLI dari video, bukan background music
-            extract_audio_from_video(video_url, out_mp3, out_tmpl)
+            # ── STEP 2: Download video ke temp file ──
+            headers = DEFAULT_HEADERS.copy()
+            headers.update({
+                "Referer": "https://www.tiktok.com/",
+                "Origin": "https://www.tiktok.com",
+                "Accept-Encoding": "identity",
+            })
+            logger.info("⬇️ Download video ke temp...")
+            video_resp = session.get(video_url, headers=headers, timeout=90, stream=True)
+            video_resp.raise_for_status()
+            with open(out_vid, 'wb') as f:
+                for chunk in video_resp.iter_content(chunk_size=1024 * 512):
+                    f.write(chunk)
 
-            # ── STEP 3: Ambil cover dari frame detik ke-2 (hindari fade-in hitam) ──
-            cover_path = extract_frame_at_2s(video_url, out_tmpl)
+            # ── STEP 3: Extract audio dari file video ──
+            logger.info("🎬 Extract audio...")
+            result = subprocess.run([
+                'ffmpeg', '-y', '-i', out_vid,
+                '-vn', '-acodec', 'libmp3lame', '-ab', '192k', '-ar', '44100',
+                out_mp3
+            ], capture_output=True, timeout=120)
+            if result.returncode != 0:
+                raise RuntimeError(f"ffmpeg: {result.stderr.decode(errors='ignore')[-200:]}")
 
-            # Fallback ke thumbnail TikWM kalau screenshot gagal
+            # ── STEP 4: Cover dari frame detik ke-2 ──
+            cover_path = extract_frame_at_2s(out_vid, out_tmpl)
+
+            # Hapus video temp setelah extract
+            try: os.remove(out_vid)
+            except: pass
+
+            # Fallback cover ke thumbnail TikWM
             if not cover_path and cover_url:
-                logger.info("🖼️ Fallback ke thumbnail TikWM...")
                 try:
                     cover_path = out_tmpl + '_cover.jpg'
                     cr = session.get(cover_url, timeout=15)
@@ -350,7 +357,7 @@ def get_mp3_api():
                 embed_cover(out_mp3, cover_path, out_tmpl)
 
         else:
-            # ── FALLBACK: yt-dlp kalau TikWM gagal total ──
+            # ── FALLBACK: yt-dlp ──
             logger.warning("⚠️ TikWM gagal, fallback ke yt-dlp...")
             ydl_opts = {
                 'format': 'bestaudio/best',
