@@ -268,37 +268,29 @@ def get_mp3_api():
             logger.warning("⚠️ TikWM gagal, fallback ke yt-dlp...")
             ydl_opts = {
                 'format': 'bestaudio/best',
-                'outtmpl': out_mp3,           # paksa nama file langsung .mp3
-                'postprocessors': [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                    'preferredquality': '192'
-                }],
-                # EmbedThumbnail & FFmpegMetadata dihapus — bikin hang & rename file
+                'outtmpl': out_mp3,
+                'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}],
                 'writethumbnail': False,
                 'quiet': True,
                 'no_warnings': True,
                 'noplaylist': True,
-                'socket_timeout': 20,         # timeout biar gak stuck selamanya
+                'socket_timeout': 20,
                 'user_agent': TIKTOK_UA,
                 'http_headers': DEFAULT_HEADERS,
             }
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(tiktok_url, download=True)
                 title = info.get('title', title)
-
-            # yt-dlp kadang dobel ekstensi jadi .mp3.mp3, handle itu
-            if not os.path.exists(out_mp3):
-                alt = out_mp3 + '.mp3'
-                if os.path.exists(alt):
-                    os.rename(alt, out_mp3)
+            # yt-dlp kadang bikin dobel ekstensi .mp3.mp3
+            if not os.path.exists(out_mp3) and os.path.exists(out_mp3 + '.mp3'):
+                os.rename(out_mp3 + '.mp3', out_mp3)
 
         if not os.path.exists(out_mp3):
             do_cleanup()
             return "Gagal: File MP3 tidak berhasil dibuat.", 500
 
         # Nama file: [Vinder].(judul asli).mp3
-        safe_title = re.sub(r'[^a-zA-Z0-9 ]', '', title).strip()[:60] or 'audio'
+        safe_title = re.sub(r'[^a-zA-Z0-9]', '_', title)[:60] or 'audio'
         filename   = f"[Vinder].{safe_title}.mp3"
 
         logger.info(f"✅ Siap dikirim: {filename}")
