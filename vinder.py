@@ -202,40 +202,61 @@ def get_video_api():
     except Exception as e:
         return f"Error: {str(e)}", 500
 
+def resolve_tiktok_url(url):
+    """Resolve short TikTok URL (vt.tiktok.com) ke URL lengkap."""
+    try:
+        r = session.head(url, allow_redirects=True, timeout=10)
+        resolved = r.url
+        logger.info(f"🔗 Resolved: {url} → {resolved}")
+        return resolved
+    except Exception as e:
+        logger.warning(f"⚠️ Gagal resolve URL: {e}")
+        return url
+
+
+def get_tiktok_audio_via_tikwm(tiktok_url):
+    """
+    Fallback: ambil direct audio URL dari TikWM API
+    kalau yt-dlp gagal extract (status code 0 / region block).
+    """
+    try:
+        resp = session.get(f"https://www.tikwm.com/api/?url={tiktok_url}", timeout=15)
+        data = resp.json()
+        if data.get('code') == 0:
+            v = data['data']
+            music_url = v.get('music')  # direct MP3/audio URL
+            cover_url = v.get('cover') or v.get('origin_cover')
+            title     = v.get('title', 'audio')
+            return music_url, cover_url, title
+    except Exception as e:
+        logger.warning(f"⚠️ TikWM fallback gagal: {e}")
+    return None, None, None
+
+
 @app.route('/api/get_mp3')
 def get_mp3_api():
-    # Prioritas: tiktok_url (URL asli TikTok untuk yt-dlp extract)
-    # Fallback: url (bisa CDN tapi yt-dlp coba download langsung)
     tiktok_url = request.args.get('tiktok_url') or request.args.get('url')
     title      = request.args.get('title', 'audio')
 
     if not tiktok_url:
         return "URL Kosong", 400
 
+    # Resolve short URL dulu (vt.tiktok.com → www.tiktok.com/...)
+    if 'vt.tiktok.com' in tiktok_url or 'vm.tiktok.com' in tiktok_url:
+        tiktok_url = resolve_tiktok_url(tiktok_url)
+
     safe_title = re.sub(r'[^a-zA-Z0-9]', '_', title)[:40] or 'audio'
-    # Pakai timestamp unik biar tidak bentrok kalau ada request bersamaan
-    uid      = str(int(time.time() * 1000))
-    out_tmpl = f'/tmp/vinder_{uid}'
-    out_mp3  = out_tmpl + '.mp3'
+    uid        = str(int(time.time() * 1000))
+    out_tmpl   = f'/tmp/vinder_{uid}'
+    out_mp3    = out_tmpl + '.mp3'
 
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': out_tmpl + '.%(ext)s',
         'postprocessors': [
-            {
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            },
-            {
-                # Embed thumbnail sebagai cover art ID3
-                'key': 'EmbedThumbnail',
-            },
-            {
-                # Embed metadata title, uploader dll ke ID3 tag
-                'key': 'FFmpegMetadata',
-                'add_metadata': True,
-            },
+            {'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'},
+            {'key': 'EmbedThumbnail'},
+            {'key': 'FFmpegMetadata', 'add_metadata': True},
         ],
         'writethumbnail': True,
         'quiet': True,
@@ -251,25 +272,65 @@ def get_mp3_api():
             if os.path.exists(f):
                 try:
                     os.remove(f)
-                    logger.info(f"🧹 Cleanup: {f}")
                 except Exception:
                     pass
 
     try:
-        logger.info(f"🎵 MP3 Processing: {tiktok_url}")
+        logger.info(f"🎵 MP3 Processing (yt-dlp): {tiktok_url}")
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([tiktok_url])
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([tiktok_url])
+        except Exception as ydl_err:
+            logger.warning(f"⚠️ yt-dlp gagal: {ydl_err} — coba fallback TikWM...")
+
+            # Fallback: ambil audio URL langsung dari TikWM, download manual
+            music_url, cover_url, api_title = get_tiktok_audio_via_tikwm(tiktok_url)
+            if not music_url:
+                raise Exception(f"yt-dlp gagal dan TikWM fallback tidak menemukan audio. Error awal: {ydl_err}")
+
+            logger.info(f"🎵 Fallback TikWM audio: {music_url}")
+            title = api_title or title
+
+            # Download audio langsung
+            audio_resp = session.get(music_url, headers=DEFAULT_HEADERS, timeout=60, stream=True)
+            audio_resp.raise_for_status()
+            raw_audio = out_tmpl + '.mp3'
+            with open(raw_audio, 'wb') as f:
+                for chunk in audio_resp.iter_content(chunk_size=1024 * 512):
+                    f.write(chunk)
+
+            # Embed cover art manual pakai ffmpeg kalau ada
+            if cover_url:
+                try:
+                    cover_resp = session.get(cover_url, timeout=15)
+                    cover_path = out_tmpl + '.jpg'
+                    with open(cover_path, 'wb') as f:
+                        f.write(cover_resp.content)
+                    # ffmpeg embed cover ke mp3
+                    import subprocess
+                    tagged = out_tmpl + '_tagged.mp3'
+                    subprocess.run([
+                        'ffmpeg', '-y',
+                        '-i', raw_audio,
+                        '-i', cover_path,
+                        '-map', '0:a', '-map', '1:v',
+                        '-c:a', 'copy', '-c:v', 'mjpeg',
+                        '-id3v2_version', '3',
+                        '-metadata:s:v', 'title=Album cover',
+                        '-metadata:s:v', 'comment=Cover (front)',
+                        tagged
+                    ], check=True, capture_output=True)
+                    os.replace(tagged, raw_audio)
+                except Exception as cover_err:
+                    logger.warning(f"⚠️ Cover embed gagal (tidak fatal): {cover_err}")
 
         if not os.path.exists(out_mp3):
-            logger.error("❌ File MP3 tidak ditemukan setelah proses yt-dlp")
             do_cleanup()
             return "Gagal: File MP3 tidak berhasil dibuat.", 500
 
         logger.info(f"✅ MP3 siap dikirim: {out_mp3}")
 
-        # Baca file ke memory dulu, BARU cleanup, BARU kirim
-        # Ini solusi paling aman — hindari race condition finally vs send_file
         with open(out_mp3, 'rb') as f:
             audio_data = f.read()
 
