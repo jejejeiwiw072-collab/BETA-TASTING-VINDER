@@ -128,12 +128,26 @@ def download_url_api():
     
     # Konfigurasi yt-dlp dikunci untuk kualitas maksimal
     ydl_opts = {
-        'format': 'bestvideo+bestaudio/best',
-        'quiet': True,
-        'no_warnings': True,
+        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', # Prioritaskan mp4 & m4a untuk kualitas & kompatibilitas
+        'verbose': True,
+        'dump_single_json': True,
+        'logger': logger,
+        'progress_hooks': [lambda d: logger.info(f"yt-dlp hook: {d}")],
         'noplaylist': True,
         'user_agent': TIKTOK_UA,
-        'http_headers': DEFAULT_HEADERS
+        'http_headers': DEFAULT_HEADERS,
+        'merge_output_format': 'mp4', # Pastikan output digabungkan ke mp4
+        'postprocessors': [{
+            'key': 'FFmpegVideoConvertor',
+            'preferedformat': 'mp4'
+        }, {
+            'key': 'FFmpegNormalize',
+            'when': 'pre_process', # Normalize before final merge
+            'post_process_args': ['--audio-normalization-args', '-af loudnorm=I=-16:TP=-1.5:LRA=11'] # Atur standar EBU R 128
+        }, {
+            'key': 'RemoveExtraneousFiles',
+            'keepfiles': False,
+        }]
     }
     
     try:
