@@ -1,652 +1,1082 @@
 <!DOCTYPE html>
 <html lang="id">
- <head>
-  ‎<meta name="google-site-verification" content="GHstpy6snm1A3qBy0j__vRBFzDGW8xj7Ct5HfsCrtCw" />
+<head>
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-  <title>
-   Vinder
-  </title>
+  <title>Vinder — ZakDev</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
-   .card-desc {
-      font-size: 14px;
-      color: #888;
-      line-height: 1.5;
+    /* ===== CSS VARIABLES ===== */
+    :root {
+      --bg: #000000;
+      --card: #111111;
+      --card2: #161616;
+      --border: #242424;
+      --border-bright: #333;
+      --text: #e8e8e8;
+      --muted: #555;
+      --muted2: #777;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --accent-glow: rgba(37,99,235,0.25);
+      --success: #16a34a;
+      --error: #dc2626;
+      --mp4-active: #2563eb;
+      --mp3-active: #9333ea;
+      --mp3-glow: rgba(147,51,234,0.25);
+      --donate: #f59e0b;
+      --donate-dark: #b45309;
     }
 
-  .audio-card {
-    width: 100%;
-    background-color: black;
-    border: 1px solid #473c76;
-    box-shadow: 0px 0px 5px 0px #42308f;
-    border-radius: 12px;
-    overflow: hidden;
-    margin-top: 20px;
-  }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
-  .audio-card img {
-    width: 100%;
-    height: 180px;
-    object-fit: cover;
-    display: block;
-  }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      min-height: 100vh;
+      padding: 0 0 120px;
+      overflow-x: hidden;
+    }
 
-  .audio-card-content {
-    padding: 16px;
-  }
+    /* ===== NAVBAR ===== */
+    .navbar {
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      background: rgba(0,0,0,0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 16px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
 
-  .audio-card-title {
-    font-family: 'Space Mono', monospace;
-    font-size: 13px;
-    font-weight: 700;
-    color: #ebebeb;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 8px;
-  }
+    .navbar-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
 
-  .audio-card-desc {
-    font-size: 13px;
-    color: #888;
-    line-height: 1.5;
-  }
- 
-  
-   @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@400;500;600&display=swap');
+    .version-badge {
+      font-family: 'Space Mono', monospace;
+      font-size: 9px;
+      font-weight: 700;
+      background: #1a1a1a;
+      border: 1px solid var(--border-bright);
+      color: var(--muted2);
+      padding: 3px 7px;
+      border-radius: 20px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
 
-  :root {
-    --bg: #0f0f0f;
-    --card: #1a1a1a;
-    --border: #2a2a2a;
-    --text: #e8e8e8;
-    --muted: #666;
-    --accent: #2563eb;
-    --accent-hover: #1d4ed8;
-    --success: #16a34a;
-    --error: #dc2626;
-    --warning: #d97706;
-  }
+    .navbar-brand {
+      font-family: 'Space Mono', monospace;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      position: absolute;
+      left: 109px;
+      color: var(--text);
+    }
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+    .navbar-brand span {
+      color: var(--accent);
+    }
 
-  body {
-    background-color: #000000;
-    color: var(--text);
-    font-family: 'DM Sans', sans-serif;
-    min-height: 100vh;
-    padding: 20px 16px 80px;
-  }
- 
-  h1 {
-    font-family: 'Space Mono', monospace;
-    font-size: 22px;
-    letter-spacing: -0.5px;
-    margin-bottom: 24px;
-    display: flex;
-    visibility: hidden;
-    align-items: center;
-    gap: 10px;
-  }
-  h1 span { color: var(--accent); }
+    .navbar-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
 
-  .card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 18px;
-    margin-bottom: 16px;
-  }
+    /* ===== MAIN CONTENT ===== */
+    .main-content {
+      padding: 20px 16px;
+      max-width: 600px;
+      margin: 0 auto;
+    }
 
-  .card-title {
-    font-family: 'Space Mono', monospace;
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 14px;
-    color: #ebebebff;
-  }
+    /* ===== CARD ===== */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px;
+      margin-bottom: 14px;
+      transition: border-color 0.3s;
+    }
+    .card:hover { border-color: var(--border-bright); }
 
-  input {
-    width: 100%;
-    background: #111;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 12px 14px;
-    color: var(--text);
-    font-family: 'DM Sans', sans-serif;
-    font-size: 14px;
-    margin-bottom: 10px;
-    outline: none;
-    transition: border-color 0.2s;
-  }
-  input:focus { border-color: var(--accent); }
-  input::placeholder { color: var(--muted); }
+    .card-title {
+      font-family: Sans-Serif;
+      font-size: 11px;
+      font-weight: 700;
+      color: #ebebeb;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      margin-bottom: 14px;
+    }
 
-  button {
-    width: 100%;
-    padding: 13px;
-    border: none;
-    border-radius: 8px;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .card-header .card-title { margin-bottom: 0; }
 
-  .btn-primary {
-    background: var(--accent);
-    color: #fff;
-  }
-  .btn-primary:hover { background: var(--accent-hover); }
-  .btn-primary:disabled { background: #555; opacity: 0.8; cursor: not-allowed; }
+    /* ===== INPUT ===== */
+    .input-wrapper {
+      position: relative;
+      width: 100%;
+      margin-bottom: 10px;
+    }
+    .input-wrapper input { margin-bottom: 0; padding-right: 40px; }
 
-  .btn-dl {
-    background: #1a2a1a;
-    color: #4ade80;
-    border: 1px solid #2a3a2a;
-    padding: 9px;
-    font-size: 13px;
-    border-radius: 6px;
-    margin-top: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-  }
-  .btn-dl:hover { background: #22351f; }
-  .btn-dl:disabled { opacity: 0.5; cursor: not-allowed; }
+    input {
+      width: 100%;
+      background: #0a0a0a;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 12px 14px;
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14px;
+      margin-bottom: 10px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+    input::placeholder { color: var(--muted); }
 
-  #results { margin-top: 8px; }
+    .clear-btn {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      cursor: pointer;
+      display: none;
+      font-size: 16px;
+      padding: 5px;
+      user-select: none;
+      line-height: 1;
+      transition: color 0.15s;
+    }
+    .clear-btn:hover { color: var(--text); }
 
-  .video-item {
-    background: #111;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 12px;
-    margin-bottom: 10px;
-    display: flex;
-    gap: 12px;
-    align-items: flex-start;
-  }
-  .video-thumb {
-    width: 85px;
-    height: 120px;
-    background: #222;
-    border-radius: 6px;
-    object-fit: cover;
-    flex-shrink: 0;
-  }
-  .video-info {
-    flex: 1;
-    min-width: 0;
-  }
-  .video-title {
-    font-size: 13px;
-    font-weight: 600;
-    line-height: 1.4;
-    margin-bottom: 6px;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-  .video-meta {
-    font-size: 11px;
-    color: var(--muted);
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 6px;
-  }
-  .meta-tag {
-    background: #1a1a1a;
-    padding: 2px 6px;
-    border-radius: 4px;
-    border: 1px solid #333;
-  }
+    /* ===== BUTTONS ===== */
+    button {
+      width: 100%;
+      padding: 13px;
+      border: none;
+      border-radius: 9px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
 
-  /* ===== DOWNLOAD BUBBLE ===== */
-  #dl-container {
-    position: fixed;
-    bottom: 20px;
-    left: 16px;
-    right: 16px;
-    z-index: 999;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    pointer-events: none;
-  }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      letter-spacing: 0.3px;
+    }
+    .btn-primary:hover {
+      background: var(--accent-hover);
+      box-shadow: 0 4px 20px var(--accent-glow);
+      transform: translateY(-1px);
+    }
+    .btn-primary:disabled { background: #222; color: #555; cursor: not-allowed; transform: none; box-shadow: none; }
 
-  .dl-bubble {
-    background: #1c1c1c;
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 14px 16px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
-    pointer-events: all;
-    animation: slideUp 0.3s ease;
-    transition: opacity 0.4s, transform 0.4s;
-  }
+    .btn-dl {
+      background: #0e1f0e;
+      color: #4ade80;
+      border: 1px solid #1a3a1a;
+      padding: 9px;
+      font-size: 13px;
+      border-radius: 7px;
+      margin-top: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .btn-dl:hover { background: #152a15; box-shadow: 0 2px 12px rgba(74,222,128,0.15); }
+    .btn-dl:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  .dl-bubble.fade-out {
-    opacity: 0;
-    transform: translateY(20px);
-  }
+    /* ===== FORMAT TOGGLE (MP4 / MP3) ===== */
+    .format-toggle {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
 
-  @keyframes slideUp {
-    from { opacity: 0; transform: translateY(30px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
+    .fmt-btn {
+      flex: 1;
+      font-family: Sans-Serif;
+      padding: 9px 0;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      cursor: pointer;
+      border: 1px solid var(--border-bright);
+      background: #111;
+      color: var(--muted2);
+      transition: all 0.25s cubic-bezier(0.4,0,0.2,1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      width: auto;
+    }
 
-  .dl-bubble-icon {
-    width: 38px;
-    height: 38px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 18px;
-    flex-shrink: 0;
-  }
-  .dl-bubble-icon.loading { background: #1a2540; animation: pulse 1.2s infinite; }
-  .dl-bubble-icon.success { background: #1a2e1a; }
-  .dl-bubble-icon.error   { background: #2e1a1a; }
+    .fmt-btn.active-mp4 {
+      background: rgba(37,99,235,0.15);
+      border-color: var(--mp4-active);
+      color: #60a5fa;
+      box-shadow: 0 0 16px rgba(37,99,235,0.2);
+    }
 
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-  }
+    .fmt-btn.active-mp3 {
+      background: rgba(147,51,234,0.15);
+      border-color: var(--mp3-active);
+      color: #c084fc;
+      box-shadow: 0 0 16px var(--mp3-glow);
+    }
 
-  .dl-bubble-text { flex: 1; min-width: 0; }
-  .dl-bubble-label {
-    font-size: 13px;
-    font-weight: 600;
-    margin-bottom: 2px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .dl-bubble-sub {
-    font-size: 11px;
-    color: var(--muted);
-  }
+    .fmt-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+      opacity: 0.7;
+      flex-shrink: 0;
+    }
 
-  .dl-progress {
-    height: 3px;
-    background: #2a2a2a;
-    border-radius: 2px;
-    margin-top: 8px;
-    overflow: hidden;
-  }
-  .dl-progress-bar {
-    height: 100%;
-    background: var(--accent);
-    border-radius: 2px;
-    width: 0%;
-    transition: width 0.1s linear;
-  }
-  .dl-progress-bar.done { width: 100%; background: #4ade80; }
-  .dl-progress-bar.fail { width: 100%; background: var(--error); }
+    /* ===== RESOLUTION DROPDOWN ===== */
+    .res-trigger { position: relative; display: inline-block; }
+    .res-btn {
+      width: auto;
+      padding: 5px 10px;
+      border-radius: 16px;
+      border: none;
+      background: #1a1a1a;
+      color: #fff;
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.5);
+      transition: background 0.15s;
+      min-width: 60px;
+      min-height: 30px;
+      justify-content: center;
+      border: 1px solid var(--border-bright);
+    }
+    .res-btn:hover { background: #222; }
+    .res-btn .arrow { font-size: 9px; opacity: 0.4; }
 
-  .dl-close {
-    background: none;
-    border: none;
-    color: var(--muted);
-    font-size: 18px;
-    width: auto;
-    padding: 4px 6px;
-    cursor: pointer;
-    flex-shrink: 0;
-  }
+    .res-popup {
+      display: none;
+      position: absolute;
+      right: 0;
+      top: calc(100% + 6px);
+      background: #191919;
+      border: 1px solid var(--border-bright);
+      border-radius: 12px;
+      overflow: hidden;
+      z-index: 9999;
+      min-width: 210px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.8);
+    }
+    .res-popup.open { display: block; animation: fadeIn 0.15s ease; }
+    .res-option {
+      padding: 12px 16px;
+      cursor: pointer;
+      transition: background 0.1s;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 2px;
+      position: relative;
+    }
+    .res-option:hover { background: #252525; }
+    .res-opt-title {
+      font-family: 'Space Mono', monospace;
+      font-size: 12px;
+      font-weight: 700;
+      color: #aaa;
+    }
+    .res-option.selected .res-opt-title { color: var(--accent); }
+    .res-opt-desc {
+      color: #666;
+      font-size: 10px;
+      font-family: 'DM Sans', sans-serif;
+      line-height: 1.3;
+    }
+    .res-option:hover .res-opt-desc { color: #aaa; }
+    .res-option.selected::after {
+      content: '✓';
+      position: absolute;
+      right: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 11px;
+      color: var(--accent);
+    }
+    .res-divider { height: 1px; background: var(--border); }
 
-  .status-txt { font-size: 12px; margin-top: 8px; color: var(--muted); min-height: 18px; }
-  .status-txt.ok  { color: #4ade80; }
-  .status-txt.err { color: #f87171; }
-
-  /* ===== INPUT WITH CLEAR BUTTON ===== */
-  .input-wrapper {
-    position: relative;
-    width: 100%;
-    margin-bottom: 10px;
-  }
-  .input-wrapper input {
-    margin-bottom: 0;
-    padding-right: 40px;
-  }
-  .clear-btn {
-    position: absolute;
-    right: 10px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--muted);
-    cursor: pointer;
-    display: none;
-    font-size: 18px;
-    padding: 5px;
-    user-select: none;
-    line-height: 1;
-  }
-  .clear-btn:hover { color: var(--text); }
-
-  /* ===== TOMBOL RESOLUSI ===== */
-  .card-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 14px;
-  }
-  .card-header .card-title { margin-bottom: 0; }
-
-  .res-trigger { position: relative; display: inline-block; }
-  .res-btn {
-    width: auto;
-    padding: 5px 10px;
-    border-radius: 16px;
-    border: none;
-    background: #222;
-    color: #fff;
-    font-family: 'Space Mono', monospace;
-    font-size: 11px;
-    font-weight: 700;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    box-shadow: 0 3px 10px rgba(0,0,0,0.5), 0 1px 3px rgba(0,0,0,0.4);
-    transition: background 0.15s;
-    min-width: 60px;
-    min-height: 30px;
-    justify-content: center;
-  }
-  .res-btn:hover { background: #2a2a2a; }
-  .res-btn .arrow { font-size: 9px; opacity: 0.5; }
-
-  .res-popup {
-    display: none;
-    position: absolute;
-    right: 0;
-    top: calc(100% + 6px);
-    background: #1e1e1e;
-    border: none;
-    border-radius: 10px;
-    overflow: hidden;
-    z-index: 9999;
-    min-width: 200px;
-    box-shadow: 0 8px 28px rgba(0,0,0,0.7), 0 2px 8px rgba(0,0,0,0.5);
-  }
-  .res-popup.open { display: block; animation: fadeIn 0.15s ease; }
-  @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(-6px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-  .res-option {
-    padding: 12px 16px;
-    cursor: pointer;
-    transition: background 0.1s;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
-    position: relative;
-  }
-  .res-option:hover { background: #2a2a2a; }
-  
-  .res-opt-title {
-    font-family: 'Space Mono', monospace;
-    font-size: 12px;
-    font-weight: 700;
-    color: #aaa;
-  }
-  .res-option.selected .res-opt-title { color: var(--accent); }
-  
-  .res-opt-desc {
-    color: #888;
-    font-size: 10px;
-    font-family: 'DM Sans', sans-serif;
-    line-height: 1.3;
-    font-weight: normal;
-  }
-  .res-option:hover .res-opt-desc { color: #ccc; }
-
-  .res-option.selected::after { 
-    content: '✓'; 
-    position: absolute;
-    right: 16px;
-    top: 50%;
-    transform: translateY(-50%);
-    font-size: 11px; 
-    color: var(--accent);
-  }
-  
-  .res-divider { height: 1px; background: #2a2a2a; }
-
-  /* ===== ELEGANT GRADIENT EFFECT ===== */
-  .rainbow-text {
+    /* ===== RAINBOW TEXT ===== */
+    .rainbow-text {
       font-weight: bold;
-    background: linear-gradient(
-      to right, 
-      #9333ea, /* Ungu */
-      #2563eb, /* Biru */
-      #ef4444, /* Merah */
-      #9333ea  /* Loop back to Ungu */
-    );
-    background-size: 200% auto;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    animation: elegant-move 5s ease infinite;
-    font-weight: 800;
-    display: inline-block;
-    filter: drop-shadow(0 0 2px rgba(147, 51, 234, 0.3));
-  }
-  @keyframes elegant-move {
-    0% { background-position: 0% center; }
-    50% { background-position: 100% center; }
-    100% { background-position: 0% center; }
-  }
+      background: linear-gradient(to right, #9333ea, #2563eb, #ef4444, #9333ea);
+      background-size: 200% auto;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: elegant-move 5s ease infinite;
+      font-weight: 800;
+      display: inline-block;
+      filter: drop-shadow(0 0 2px rgba(147,51,234,0.3));
+    }
+    @keyframes elegant-move {
+      0% { background-position: 0% center; }
+      50% { background-position: 100% center; }
+      100% { background-position: 0% center; }
+    }
 
-  /* ===== PREVIEW CARD URL ===== */
-  #url-preview-container { margin-top: 14px; display: none; }
-  .preview-card {
-    background: #111;
-    border: 1px solid var(--accent);
-    border-radius: 10px;
-    padding: 12px;
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    animation: fadeIn 0.3s ease;
-  }
-  .preview-thumb {
-    width: 60px;
-    height: 80px;
-    border-radius: 6px;
-    object-fit: cover;
-  }
-  .preview-info { flex: 1; min-width: 0; }
-  .preview-title {
-    font-size: 13px;
-    font-weight: 600;
-    margin-bottom: 4px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .preview-meta {
-    font-size: 11px;
-    color: var(--muted);
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
+    /* ===== PREVIEW CARD ===== */
+    #url-preview-container { margin-top: 12px; display: none; }
+    .preview-card {
+      background: #0a0a0a;
+      border: 1px solid var(--accent);
+      border-radius: 10px;
+      padding: 12px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      animation: fadeIn 0.3s ease;
+    }
+    .preview-thumb {
+      width: 60px;
+      height: 80px;
+      border-radius: 6px;
+      object-fit: cover;
+    }
+    .preview-info { flex: 1; min-width: 0; }
+    .preview-title {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .preview-meta {
+      font-size: 11px;
+      color: var(--muted2);
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    /* ===== STATUS TEXT ===== */
+    .status-txt { font-size: 12px; margin-top: 8px; color: var(--muted); min-height: 18px; }
+    .status-txt.ok  { color: #4ade80; }
+    .status-txt.err { color: #f87171; }
+
+    /* ===== RESULTS ===== */
+    #results { margin-top: 10px; }
+    .video-item {
+      background: #0d0d0d;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 10px;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      transition: border-color 0.2s;
+    }
+    .video-item:hover { border-color: var(--border-bright); }
+    .video-thumb {
+      width: 85px;
+      height: 120px;
+      background: #1a1a1a;
+      border-radius: 7px;
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+    .video-info { flex: 1; min-width: 0; }
+    .video-title {
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1.4;
+      margin-bottom: 6px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .video-meta {
+      font-size: 11px;
+      color: var(--muted2);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .meta-tag {
+      background: #1a1a1a;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid #2a2a2a;
+    }
+
+    /* ===== AUDIO CARD ===== */
+    .audio-card {
+      width: 100%;
+      background: var(--card);
+      border: 1px solid #473c76;
+      box-shadow: 0 0 20px rgba(66,48,143,0.2);
+      border-radius: 14px;
+      overflow: hidden;
+      margin-top: 6px;
+    }
+    .audio-card img {
+      width: 100%;
+      height: 180px;
+      object-fit: cover;
+      display: block;
+      opacity: 0.85;
+    }
+    .audio-card-content { padding: 16px; }
+    .audio-card-title {
+      font-family: Sans-Serif;
+      font-size: 13px;
+      font-weight: 700;
+      color: #ebebeb;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 6px;
+    }
+    .audio-card-desc { font-size: 13px; color: #666; line-height: 1.5; }
+
+    /* ===== DOWNLOAD BUBBLE ===== */
+    #dl-container {
+      position: fixed;
+      bottom: 20px;
+      left: 16px;
+      right: 16px;
+      z-index: 999;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+    }
+    .dl-bubble {
+      background: #181818;
+      border: 1px solid var(--border-bright);
+      border-radius: 14px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.7);
+      pointer-events: all;
+      animation: slideUp 0.3s ease;
+      transition: opacity 0.4s, transform 0.4s;
+    }
+    .dl-bubble.fade-out { opacity: 0; transform: translateY(20px); }
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(30px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .dl-bubble-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+    .dl-bubble-icon.loading { background: #1a2540; animation: pulse 1.2s infinite; }
+    .dl-bubble-icon.success { background: #0e2a0e; }
+    .dl-bubble-icon.error   { background: #2a0e0e; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    .dl-bubble-text { flex: 1; min-width: 0; }
+    .dl-bubble-label {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .dl-bubble-sub { font-size: 11px; color: var(--muted2); }
+    .dl-progress {
+      height: 3px;
+      background: #2a2a2a;
+      border-radius: 2px;
+      margin-top: 8px;
+      overflow: hidden;
+    }
+    .dl-progress-bar {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 2px;
+      width: 0%;
+      transition: width 0.1s linear;
+    }
+    .dl-progress-bar.done { width: 100%; background: #4ade80; }
+    .dl-progress-bar.fail { width: 100%; background: var(--error); }
+    .dl-close {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 18px;
+      width: auto;
+      padding: 4px 6px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    /* ===== FEEDBACK FLOATING BUTTON ===== */
+    .fab-group {
+      position: fixed;
+      bottom: 24px;
+      right: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 10px;
+      z-index: 998;
+    }
+
+    .fab-donate {
+      background: linear-gradient(135deg, #f59e0b, #ef4444);
+      border: none;
+      border-radius: 50%;
+      width: 46px;
+      height: 46px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 20px;
+      box-shadow: 0 4px 24px rgba(245,158,11,0.4);
+      transition: all 0.25s cubic-bezier(0.4,0,0.2,1);
+      text-decoration: none;
+      padding: 0;
+    }
+    .fab-donate:hover {
+      transform: translateY(-2px) scale(1.08);
+      box-shadow: 0 8px 30px rgba(245,158,11,0.55);
+    }
+    .fab-donate .donate-icon { font-size: 20px; line-height: 1; }
+
+    .fab-feedback {
+      background: #1a1a1a;
+      border: 1px solid var(--border-bright);
+      border-radius: 50%;
+      width: 46px;
+      height: 46px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 20px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+      transition: all 0.2s;
+      width: auto;
+      padding: 0;
+      width: 46px;
+    }
+    .fab-feedback:hover {
+      background: #242424;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+    }
+
+    /* ===== FEEDBACK MODAL ===== */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      backdrop-filter: blur(6px);
+      z-index: 2000;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+    .modal-overlay.open {
+      opacity: 1;
+      pointer-events: all;
+    }
+    .modal-sheet {
+      background: #141414;
+      border: 1px solid var(--border-bright);
+      border-radius: 20px 20px 0 0;
+      padding: 24px 20px 36px;
+      width: 100%;
+      max-width: 520px;
+      transform: translateY(100%);
+      transition: transform 0.35s cubic-bezier(0.4,0,0.2,1);
+    }
+    .modal-overlay.open .modal-sheet {
+      transform: translateY(0);
+    }
+    .modal-handle {
+      width: 36px;
+      height: 4px;
+      background: #333;
+      border-radius: 2px;
+      margin: 0 auto 20px;
+    }
+    .modal-title {
+      font-family: 'Space Mono', monospace;
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 4px;
+      color: var(--text);
+    }
+    .modal-subtitle {
+      font-size: 13px;
+      color: var(--muted2);
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+    .modal-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted2);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 6px;
+    }
+    .modal-input {
+      width: 100%;
+      background: #0a0a0a;
+      border: 1px solid var(--border-bright);
+      border-radius: 9px;
+      padding: 12px 14px;
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14px;
+      outline: none;
+      margin-bottom: 14px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .modal-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+    textarea.modal-input {
+      resize: vertical;
+      min-height: 100px;
+      line-height: 1.5;
+    }
+    .modal-upload-area {
+      border: 1.5px dashed var(--border-bright);
+      border-radius: 9px;
+      padding: 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-bottom: 14px;
+    }
+    .modal-upload-area:hover { border-color: var(--accent); background: rgba(37,99,235,0.04); }
+    .modal-upload-area p { font-size: 13px; color: var(--muted2); margin-top: 6px; }
+    .modal-upload-area .upload-icon { font-size: 24px; }
+    .upload-preview {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #0a0a0a;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      margin-bottom: 14px;
+      font-size: 12px;
+      color: var(--muted2);
+    }
+    .upload-preview img { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; }
+    .upload-preview span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .upload-preview button {
+      width: auto;
+      padding: 4px 8px;
+      font-size: 12px;
+      background: #1e1e1e;
+      color: var(--muted2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+    .modal-footer {
+      display: flex;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .btn-cancel {
+      flex: 1;
+      background: #1a1a1a;
+      border: 1px solid var(--border-bright);
+      color: var(--muted2);
+      font-size: 14px;
+      font-weight: 600;
+      border-radius: 9px;
+      padding: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-cancel:hover { background: #222; }
+    .btn-send {
+      flex: 2;
+      background: var(--accent);
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      border-radius: 9px;
+      padding: 12px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .btn-send:hover { background: var(--accent-hover); box-shadow: 0 4px 16px var(--accent-glow); }
+
+    
+    /* ===== DONATE MODAL ===== */
+    .donate-modal-sheet {
+      background: #141414;
+      border: 1px solid #2a2010;
+      border-radius: 20px 20px 0 0;
+      padding: 24px 20px 40px;
+      width: 100%;
+      max-width: 520px;
+      transform: translateY(100%);
+      transition: transform 0.35s cubic-bezier(0.4,0,0.2,1);
+    }
+    .modal-overlay.open .donate-modal-sheet {
+      transform: translateY(0);
+    }
+    .donate-header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .donate-emoji { font-size: 40px; margin-bottom: 10px; }
+    .donate-title {
+      font-family: 'Space Mono', monospace;
+      font-size: 17px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #f59e0b, #ef4444);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 6px;
+    }
+    .donate-desc { font-size: 13px; color: var(--muted2); line-height: 1.6; }
+    .donate-options {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .donate-option {
+      background: #0d0d0d;
+      border: 1px solid var(--border-bright);
+      border-radius: 12px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .donate-option:hover {
+      background: #141414;
+      border-color: #f59e0b;
+      box-shadow: 0 4px 20px rgba(245,158,11,0.12);
+      transform: translateX(2px);
+    }
+    .donate-opt-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+    .donate-opt-info { flex: 1; }
+    .donate-opt-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 2px;
+    }
+    .donate-opt-desc { font-size: 12px; color: var(--muted2); }
+    .donate-opt-arrow { color: var(--muted); font-size: 16px; }
+
+    /* ===== ANIMATIONS ===== */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .card { animation: fadeInUp 0.4s ease backwards; }
+    .card:nth-child(1) { animation-delay: 0.05s; }
+    .card:nth-child(2) { animation-delay: 0.1s; }
+    .card:nth-child(3) { animation-delay: 0.15s; }
+
+    /* ===== DIVIDER ===== */
+    .section-divider {
+      height: 1px;
+      background: linear-gradient(to right, transparent, var(--border-bright), transparent);
+      margin: 4px 0 14px;
+    }
+
+    /* scrollbar */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 2px; }
   </style>
- </head>
- <body>
+</head>
+<body>
 
-  <h2 style="position: absolute; right: 20px;">
-   zakdev_&gt;
-  </h2>
-  <h1>
-    Vinder 
-  </h1>
-  
-  <h2 style="  font-family: 'Space Mono', monospace;
-    font-size: 22px;
-    letter-spacing: -0.5px;
-    position: absolute;
-    top: 20px;
-    left: 49px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }">
-    vinder 
-  </h2>
-   	<img src="20260424_191010.jpg" style="width: 60px; height: 60px; position: absolute; border-radius: 120px;
-   	   top: 2px;
-   	   left: 2px;
-   	   z-index: -1;">
-  <div class="card">
-   <div class="card-header">
-    <div class="card-title">
-      Cari Video
+  <!-- ===== NAVBAR ===== -->
+  <nav class="navbar">
+    <div class="navbar-left">
+      <span class="version-badge">v1.5</span>
+      <img src="20260424_191010.jpg" style="width: 40px; height: 40px;">
+      <span class="navbar-brand">Vinder</span>
     </div>
-    <div class="res-trigger" id="triggerSearch">
-     <button class="res-btn" onclick="togglePopup('popupSearch')">
-      <span class="rainbow-text" id="labelSearch">
-       HYPE v1.3
-      </span>
-      <span class="arrow">
-       ▼
-      </span>
-     </button>
-     <div class="res-popup" id="popupSearch">
-      <div class="res-option selected" onclick="pickRes('Search','HYPE v1.3',this)">
-       <span class="res-opt-title rainbow-text">
-        HYPE v1.3
-       </span>
-       <span class="res-opt-desc">
-        Cocok untuk mengunduh video dengan resolusi tak terbatas
-       </span>
-      </div>
-      <div class="res-divider">
-      </div>
-      <div class="res-option" onclick="pickRes('Search','720p',this)">
-       <span class="res-opt-title">
-        720p
-       </span>
-       <span class="res-opt-desc">
-        Kualitas standar HD
-       </span>
-      </div>
-     </div>
+    <div class="navbar-right">
+      <span style="font-family:'Space Mono',monospace; font-size:18px; color:var(--muted2); letter-spacing:0.5px;">zakdev_<</span>
     </div>
-   </div>
-   <div class="input-wrapper">
-    <input id="kw" placeholder="Keyword pencarian..." type="text"/>
-    <span class="clear-btn" id="clear-kw" onclick="clearInput('kw')">✕</span>
-   </div>
-   <div class="input-wrapper">
-    <input id="filter" placeholder="Filter durasi: <1m, >3m (opsional)" type="text"/>
-    <span class="clear-btn" id="clear-filter" onclick="clearInput('filter')">✕</span>
-   </div>
-   <div class="input-wrapper">
-    <input id="limit" max="50" min="1" placeholder="jumlah hasil(1-50)" type="number" value=""/>
-    <span class="clear-btn" id="clear-limit" onclick="clearInput('limit')">✕</span>
-   </div>
-   <button class="btn-primary" id="btn-search" onclick="doSearch()">
-    Cari Sekarang
-   </button>
-   <div class="status-txt" id="search-status">
-   </div>
-   <div id="results">
-   </div>
-  </div>
-  <div class="card">
-   <div class="card-header">
-    <div class="card-title">
-     Download by URL
+  </nav>
+
+  <!-- ===== MAIN ===== -->
+  <div class="main-content">
+
+    <!-- CARD: Cari Video -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Cari Video</div>
+        <div class="res-trigger" id="triggerSearch">
+          <button class="res-btn" onclick="togglePopup('popupSearch')">
+            <span class="rainbow-text" id="labelSearch">HYPE v1.3</span>
+            <span class="arrow">▼</span>
+          </button>
+          <div class="res-popup" id="popupSearch">
+            <div class="res-option selected" onclick="pickRes('Search','HYPE v1.3',this)">
+              <span class="res-opt-title rainbow-text">HYPE v1.3</span>
+              <span class="res-opt-desc">Cocok untuk mengunduh video dengan resolusi tak terbatas</span>
+            </div>
+            <div class="res-divider"></div>
+            <div class="res-option" onclick="pickRes('Search','720p',this)">
+              <span class="res-opt-title">720p</span>
+              <span class="res-opt-desc">Kualitas standar HD</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="input-wrapper">
+        <input id="kw" placeholder="Keyword pencarian..." type="text"/>
+        <span class="clear-btn" id="clear-kw" onclick="clearInput('kw')">✕</span>
+      </div>
+      <div class="input-wrapper">
+        <input id="filter" placeholder="Filter durasi: <1m, >3m (opsional)" type="text"/>
+        <span class="clear-btn" id="clear-filter" onclick="clearInput('filter')">✕</span>
+      </div>
+      <div class="input-wrapper">
+        <input id="limit" max="50" min="1" placeholder="Jumlah hasil (1–50)" type="number" value=""/>
+        <span class="clear-btn" id="clear-limit" onclick="clearInput('limit')">✕</span>
+      </div>
+      <button class="btn-primary" id="btn-search" onclick="doSearch()">Cari Sekarang</button>
+      <div class="status-txt" id="search-status"></div>
+      <div id="results"></div>
     </div>
-    <div class="res-trigger" id="triggerUrl">
-     <button class="res-btn" onclick="togglePopup('popupUrl')">
-      <span class="rainbow-text" id="labelUrl">
-       HYPE v1.3
-      </span>
-      <span class="arrow">
-       ▼
-      </span>
-     </button>
-     <div class="res-popup" id="popupUrl">
-      <div class="res-option selected" onclick="pickRes('Url','HYPE v1.3',this)">
-       <span class="res-opt-title rainbow-text">
-        HYPE v1.3
-       </span>
-       <span class="res-opt-desc">
-        Cocok untuk mengunduh video dengan resolusi tak terbatas
-       </span>
+
+    <!-- CARD: Download by URL -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Download by URL</div>
+        <div class="res-trigger" id="triggerUrl">
+          <button class="res-btn" onclick="togglePopup('popupUrl')">
+            <span class="rainbow-text" id="labelUrl">HYPE v1.3</span>
+            <span class="arrow">▼</span>
+          </button>
+          <div class="res-popup" id="popupUrl">
+            <div class="res-option selected" onclick="pickRes('Url','HYPE v1.3',this)">
+              <span class="res-opt-title rainbow-text">HYPE v1.3</span>
+              <span class="res-opt-desc">Cocok untuk mengunduh video dengan resolusi tak terbatas</span>
+            </div>
+            <div class="res-divider"></div>
+            <div class="res-option" onclick="pickRes('Url','720',this)">
+              <span class="res-opt-title">720p</span>
+              <span class="res-opt-desc">Kualitas standar HD</span>
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="res-divider">
+
+      <!-- FORMAT TOGGLE MP4 / MP3 -->
+      <div class="format-toggle" id="format-toggle">
+        <button class="fmt-btn active-mp4" id="fmt-mp4" onclick="selectFormat('mp4')">
+          <span class="fmt-dot"></span> MP4
+        </button>
+        <button class="fmt-btn" id="fmt-mp3" onclick="selectFormat('mp3')">
+          <span class="fmt-dot"></span> MP3
+        </button>
       </div>
-      <div class="res-option" onclick="pickRes('Url','720',this)">
-       <span class="res-opt-title">
-        720p
-       </span>
-       <span class="res-opt-desc">
-        Kualitas standar HD
-       </span>
+
+      <div class="input-wrapper">
+        <input id="dl-url" placeholder="https://vm.tiktok.com/..." type="text"/>
+        <span class="clear-btn" id="clear-dl-url" onclick="clearInput('dl-url')">✕</span>
       </div>
-     </div>
+      <div id="url-preview-container"></div>
+      <button class="btn-primary" id="btn-dlurl" onclick="doDownloadUrl()">Download Langsung</button>
+      <div class="status-txt" id="url-status"></div>
     </div>
-   </div>
-   <div class="input-wrapper">
-    <input id="dl-url" placeholder="https://vm.tiktok.com/..." type="text"/>
-    <span class="clear-btn" id="clear-dl-url" onclick="clearInput('dl-url')">✕</span>
-   </div>
-   <div id="url-preview-container"></div>
-   <button class="btn-primary" id="btn-dlurl" onclick="doDownloadUrl()">
-    Download Langsung
-   </button>
-   <div class="status-txt" id="url-status">
-   </div>
-  </div>
-  <div id="dl-container">
+
+    <!-- AUDIO CARD -->
+    <div class="audio-card">
+      <img src="new3.png" alt="Audio Downloader Preview">
+      <div class="audio-card-content">
+        <div class="audio-card-title">NEW <span style="color:#2563eb;">Fitur</span> MP3 Format</div>
+        <div class="audio-card-desc">Segera hadir: fitur MP3 dengan tampilan dan performa yang lebih modern.</div>
+      </div>
+    </div>
+
   </div>
 
-  <!-- NEXT AUDIO DOWNLOADER — paling bawah -->
-  <div class="audio-card">
-    <img src="AIRetouch_20260424_223611516.png" alt="Audio Downloader Preview" style=" pointer-events: all;">
-    <div class="audio-card-content">
-      <div class="audio-card-title">NEXT <span style="color: #2563eb;">AUDIO</span> DOWNLOADER</div>
-      <div class="audio-card-desc">Segera hadir: fitur MP3 dengan tampilan dan performa yang lebih modern.</div>
+  <!-- ===== DOWNLOAD BUBBLES ===== -->
+  <div id="dl-container"></div>
+
+  <!-- ===== FAB GROUP (Donate + Feedback) ===== -->
+  <div class="fab-group">
+    <button class="fab-donate" onclick="openDonateModal()">
+      <span class="donate-icon">☕</span>
+    </button>
+    <button class="fab-feedback" onclick="openFeedbackModal()" title="Kirim Saran">
+      ✉️
+    </button>
+  </div>
+
+  <!-- ===== FEEDBACK MODAL ===== -->
+  <div class="modal-overlay" id="feedback-modal" onclick="handleOverlayClick(event,'feedback-modal')">
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-title">✉️ Kotak Saran</div>
+      <div class="modal-subtitle">Punya saran atau nemu bug? Kirim langsung ke Gmail gw — gw baca semua masukan!</div>
+
+      <div class="modal-label">Nama kamu</div>
+      <input class="modal-input" id="fb-name" placeholder="Nama / username kamu..." type="text"/>
+
+      <div class="modal-label">Pesan / Saran</div>
+      <textarea class="modal-input" id="fb-message" placeholder="Tulis saran, laporan bug, atau apapun..."></textarea>
+
+      <div class="modal-label">Screenshot Error (opsional)</div>
+      <div class="modal-upload-area" onclick="document.getElementById('fb-photo').click()" id="upload-area">
+        <div class="upload-icon">📸</div>
+        <p>Tap untuk upload foto error</p>
+      </div>
+      <input type="file" id="fb-photo" accept="image/*" style="display:none" onchange="handlePhotoPreview(event)">
+      <div id="photo-preview" style="display:none"></div>
+
+      <div class="modal-footer">
+        <button class="btn-cancel" onclick="closeFeedbackModal()">Batal</button>
+        <button class="btn-send" onclick="sendFeedback()">
+          📨 Kirim via Gmail
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== DONATE MODAL ===== -->
+  <div class="modal-overlay" id="donate-modal" onclick="handleOverlayClick(event,'donate-modal')">
+    <div class="donate-modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="donate-header">
+        <div class="donate-emoji">☕</div>
+        <div class="donate-title">Support ZakDev!</div>
+        <div class="donate-desc">Kalau Vinder bermanfaat buat lo,<br>traktir gw kopi biar semangat ngoding! 🔥</div>
+      </div>
+      <div class="donate-options">
+        <a class="donate-option" href="https://saweria.co/zakdev" target="_blank">
+          <div class="donate-opt-icon" style="background:#1a1208;">🧡</div>
+          <div class="donate-opt-info">
+            <div class="donate-opt-name">Saweria</div>
+            <div class="donate-opt-desc">Traktir kopi lewat Saweria</div>
+          </div>
+          <span class="donate-opt-arrow">›</span>
+        </a>
+        <a class="donate-option" href="https://saweria.co/ZakdevComunity" target="_blank">
+          <div class="donate-opt-icon" style="background:#1a0808;">❤️</div>
+          <div class="donate-opt-info">
+            <div class="donate-opt-name">Trakteer</div>
+            <div class="donate-opt-desc">Support via Trakteer</div>
+          </div>
+          <span class="donate-opt-arrow">›</span>
+        </a>
+        
+
+      </div>
+      <div style="text-align:center; margin-top:20px; font-size:12px; color:var(--muted);">
+        Makasih udah support! 🙏
+      </div>
     </div>
   </div>
 
   <script>
-  function triggerHardRefresh() {
-    localStorage.clear();
-    sessionStorage.clear();
-    const url = new URL(window.location.origin + window.location.pathname);
-    url.searchParams.set('refresh', Date.now());
-    window.location.replace(url.toString());
+  /* ===== STATE ===== */
+  const resSelected = { Search: 'HYPE v1.3', Url: 'HYPE v1.3' };
+  let lastUrl = '';
+  let currentPreviewData = null;
+  let selectedFormat = 'mp4'; // 'mp4' or 'mp3'
+
+  /* ===== FORMAT TOGGLE ===== */
+  function selectFormat(fmt) {
+    selectedFormat = fmt;
+    const mp4Btn = document.getElementById('fmt-mp4');
+    const mp3Btn = document.getElementById('fmt-mp3');
+    mp4Btn.className = 'fmt-btn' + (fmt === 'mp4' ? ' active-mp4' : '');
+    mp3Btn.className = 'fmt-btn' + (fmt === 'mp3' ? ' active-mp3' : '');
+    // Reset preview on format switch
+    if (currentPreviewData) {
+      const btnDl = document.getElementById('btn-dlurl');
+      btnDl.textContent = fmt === 'mp3' ? '⬇Download MP3' : '⬇Download MP4';
+    }
   }
 
-  const resSelected = { Search: 'HYPE v1.3', Url: 'HYPE v1.3' };
-
-  document.addEventListener('click', function(e) {
-    ['popupSearch','popupUrl'].forEach(id => {
-      const popup = document.getElementById(id);
-      if (popup && !popup.closest('.res-trigger').contains(e.target)) {
-        popup.classList.remove('open');
-      }
-    });
-  });
-
+  /* ===== RESOLUTION POPUP ===== */
   function togglePopup(popupId) {
     const popup = document.getElementById(popupId);
     const isOpen = popup.classList.contains('open');
@@ -658,21 +1088,26 @@
     resSelected[section] = res;
     const label = document.getElementById('label' + section);
     label.innerText = res;
-    
     if (res.includes('HYPE')) {
       label.classList.add('rainbow-text');
     } else {
       label.classList.remove('rainbow-text');
     }
-
     el.closest('.res-popup').querySelectorAll('.res-option').forEach(o => o.classList.remove('selected'));
     el.classList.add('selected');
     el.closest('.res-popup').classList.remove('open');
   }
 
-  let lastUrl = '';
-  let currentPreviewData = null; // Sinkronisasi Data (Optimalisasi Bandwidth)
+  document.addEventListener('click', function(e) {
+    ['popupSearch','popupUrl'].forEach(id => {
+      const popup = document.getElementById(id);
+      if (popup && !popup.closest('.res-trigger').contains(e.target)) {
+        popup.classList.remove('open');
+      }
+    });
+  });
 
+  /* ===== CLEAR INPUT ===== */
   function clearInput(id) {
     const el = document.getElementById(id);
     el.value = '';
@@ -682,7 +1117,7 @@
       document.getElementById('url-preview-container').style.display = 'none';
       document.getElementById('btn-dlurl').textContent = 'Download Langsung';
       lastUrl = '';
-      currentPreviewData = null; // Perbaikan Logika Input & Re-Download
+      currentPreviewData = null;
     }
   }
 
@@ -691,10 +1126,16 @@
     const btn = document.getElementById('clear-' + id);
     if (btn) btn.style.display = el.value ? 'block' : 'none';
     if (id === 'dl-url' && el.value.startsWith('http')) {
-       setTimeout(() => autoPreview(el.value), 500);
+      setTimeout(() => autoPreview(el.value), 500);
     }
   }
 
+  ['kw', 'filter', 'limit', 'dl-url'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', () => toggleClearBtn(id));
+  });
+
+  /* ===== AUTO PREVIEW ===== */
   async function autoPreview(url) {
     if (url === lastUrl) return;
     if (!url.includes('tiktok.com') && !url.includes('http')) return;
@@ -704,9 +1145,9 @@
     const btnDl = document.getElementById('btn-dlurl');
 
     container.style.display = 'block';
-    container.innerHTML = '<div style="font-size:11px; color:var(--muted)">🔍 Mengintip link...</div>';
+    container.innerHTML = '<div style="font-size:11px; color:var(--muted); padding:8px 0;">🔍 Mengintip link...</div>';
     btnDl.disabled = true;
-    btnDl.textContent = 'sedang di proses';
+    btnDl.textContent = 'Sedang diproses...';
 
     try {
       const resp = await fetch('/api/download_url', {
@@ -716,7 +1157,7 @@
       });
       const data = await resp.json();
       if (data.status === 'success') {
-        currentPreviewData = data; // Simpan ke cache lokal
+        currentPreviewData = data;
         container.innerHTML = `
           <div class="preview-card">
             <img src="${data.cover}" class="preview-thumb">
@@ -732,7 +1173,7 @@
           </div>
         `;
         btnDl.disabled = false;
-        btnDl.textContent = 'dowload sekarang';
+        btnDl.textContent = selectedFormat === 'mp3' ? '⬇ Download MP3' : '⬇ Download MP4';
       } else {
         container.style.display = 'none';
         btnDl.disabled = false;
@@ -747,10 +1188,7 @@
     }
   }
 
-  ['kw', 'filter', 'limit', 'dl-url'].forEach(id => {
-    document.getElementById(id).addEventListener('input', () => toggleClearBtn(id));
-  });
-
+  /* ===== DOWNLOAD BUBBLE ===== */
   function createBubble(title) {
     const wrap = document.getElementById('dl-container');
     const el = document.createElement('div');
@@ -769,12 +1207,8 @@
     wrap.appendChild(el);
     const bar = el.querySelector('#' + barId);
     const sub = el.querySelector('.dl-bubble-sub');
-    
     return {
-      updateProgress(p) {
-        bar.style.width = p + '%';
-        sub.textContent = 'Mengunduh: ' + Math.round(p) + '%';
-      },
+      updateProgress(p) { bar.style.width = p + '%'; sub.textContent = 'Mengunduh: ' + Math.round(p) + '%'; },
       setSuccess() {
         el.querySelector('.dl-bubble-icon').textContent = '✅';
         el.querySelector('.dl-bubble-icon').className = 'dl-bubble-icon success';
@@ -801,22 +1235,15 @@
   function handleRealDownload(dUrl, title) {
     const bubble = createBubble(title);
     try {
-      // Kita gunakan window.open untuk request awal, agar browser tidak otomatis
-      // mengunduh pesan error sebagai file .html jika terjadi kegagalan server.
       const a = document.createElement('a');
       a.href = dUrl;
-      // Jangan kasih atribut download dulu untuk testing
       a.target = '_blank';
-      a.download = title.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".mp4";
+      const ext = selectedFormat === 'mp3' ? '.mp3' : '.mp4';
+      a.download = title.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ext;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      
-      // Update gelembung dengan delay untuk mensimulasikan proses
-      setTimeout(() => {
-          bubble.updateProgress(100);
-          bubble.setSuccess();
-      }, 1500);
+      setTimeout(() => { bubble.updateProgress(100); bubble.setSuccess(); }, 1500);
     } catch (e) {
       bubble.setError(e.message);
     }
@@ -825,10 +1252,11 @@
   function getDownloadUrl(v, resolution) {
     let vUrl = (resolution === 'HYPE v1.3') ? (v.hdplay || v.play) : (v.play || v.hdplay);
     if (!vUrl) return '';
-    const t = new Date().getTime(); // Penanganan Error "File Korup" (nocache)
-    return `/api/get_video?url=${encodeURIComponent(vUrl)}&title=${encodeURIComponent(v.title)}&mode=${encodeURIComponent(resolution)}&nocache=${t}`;
+    const t = new Date().getTime();
+    return `/api/get_video?url=${encodeURIComponent(vUrl)}&title=${encodeURIComponent(v.title)}&mode=${encodeURIComponent(resolution)}&format=${selectedFormat}&nocache=${t}`;
   }
 
+  /* ===== SEARCH ===== */
   async function doSearch() {
     const kw = document.getElementById('kw').value.trim();
     if (!kw) return;
@@ -867,8 +1295,8 @@
               <span class="meta-tag">⏱ ${v.duration}</span>
               <span class="meta-tag">💾 ${v.size}</span>
             </div>
-            <a href="${dUrl}" download class="btn-dl" style="text-decoration: none;" onclick="createBubble('${v.title.replace(/'/g,"")}').setSuccess()">
-              ⬇️ Download
+                     <a href="${dUrl}" download class="btn-dl" style="text-decoration:none;" onclick="createBubble('${v.title.replace(/'/g,"")}').setSuccess()">
+              ⬇Download ${selectedFormat.toUpperCase()}
             </a>
           </div>
         `;
@@ -883,16 +1311,16 @@
     }
   }
 
+  /* ===== DOWNLOAD URL ===== */
   async function doDownloadUrl() {
     const url = document.getElementById('dl-url').value.trim();
     if (!url) return;
     const resolution = resSelected['Url'];
-    
-    // Optimalisasi Bandwidth: Gunakan data cache jika tersedia
+
     if (currentPreviewData && lastUrl === url) {
-        const dUrl = getDownloadUrl(currentPreviewData, resolution);
-        handleRealDownload(dUrl, currentPreviewData.title);
-        return;
+      const dUrl = getDownloadUrl(currentPreviewData, resolution);
+      handleRealDownload(dUrl, currentPreviewData.title);
+      return;
     }
 
     const btn = document.getElementById('btn-dlurl');
@@ -916,12 +1344,83 @@
       bubble.setError(e.message);
     } finally {
       btn.disabled = false;
-      btn.textContent = 'dowload sekarang';
+      btn.textContent = selectedFormat === 'mp3' ? '⬇ Download MP3' : '⬇ Download MP4';
     }
   }
 
+  /* ===== KEYBOARD SHORTCUTS ===== */
   document.getElementById('kw').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
   document.getElementById('dl-url').addEventListener('keydown', e => { if (e.key === 'Enter') doDownloadUrl(); });
+
+  /* ===== MODAL HELPERS ===== */
+  function handleOverlayClick(e, modalId) {
+    if (e.target === document.getElementById(modalId)) {
+      document.getElementById(modalId).classList.remove('open');
+    }
+  }
+
+  /* ===== FEEDBACK MODAL ===== */
+  function openFeedbackModal() {
+    document.getElementById('feedback-modal').classList.add('open');
+  }
+  function closeFeedbackModal() {
+    document.getElementById('feedback-modal').classList.remove('open');
+  }
+
+  function handlePhotoPreview(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const previewDiv = document.getElementById('photo-preview');
+      document.getElementById('upload-area').style.display = 'none';
+      previewDiv.style.display = 'flex';
+      previewDiv.innerHTML = `
+        <div class="upload-preview">
+          <img src="${e.target.result}" alt="preview">
+          <span>${file.name}</span>
+          <button onclick="removePhoto()">✕</button>
+        </div>
+      `;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function removePhoto() {
+    document.getElementById('fb-photo').value = '';
+    document.getElementById('photo-preview').style.display = 'none';
+    document.getElementById('upload-area').style.display = 'block';
+  }
+
+  function sendFeedback() {
+    const name = document.getElementById('fb-name').value.trim() || 'Anonymous';
+    const message = document.getElementById('fb-message').value.trim();
+    if (!message) {
+      document.getElementById('fb-message').focus();
+      return;
+    }
+    const subject = encodeURIComponent(`[Vinder Feedback] dari ${name}`);
+    const body = encodeURIComponent(`Dari: ${name}\n\nPesan:\n${message}\n\n---\nDikirim via Vinder v1.2`);
+    window.open(`mailto:zakdev@gmail.com?subject=${subject}&body=${body}`, '_blank');
+    closeFeedbackModal();
+  }
+
+  /* ===== DONATE MODAL ===== */
+  function openDonateModal() {
+    document.getElementById('donate-modal').classList.add('open');
+  }
+  function closeDonateModal() {
+    document.getElementById('donate-modal').classList.remove('open');
+  }
+
+  /* ===== HARD REFRESH ===== */
+  function triggerHardRefresh() {
+    localStorage.clear();
+    sessionStorage.clear();
+    const url = new URL(window.location.origin + window.location.pathname);
+    url.searchParams.set('refresh', Date.now());
+    window.location.replace(url.toString());
+  }
   </script>
- </body>
+</body>
 </html>
