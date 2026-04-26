@@ -112,7 +112,9 @@ def search_videos_api():
                 'play': v.get('play', ''),
                 'hdplay': v.get('hdplay', '') or v.get('play', ''),
                 'cover': cover_url,
-                'size': f"{size_mb} MB"
+                'size': f"{size_mb} MB",
+                'video_id': v.get('id', ''),  # untuk reconstruct TikTok URL di MP3
+                'author_id': v.get('author', {}).get('id', '') if isinstance(v.get('author'), dict) else ''
             })
         logger.info(f"✅ Found {len(results)} videos")
         return jsonify({"status": "success", "data": results})
@@ -202,39 +204,40 @@ def get_video_api():
 
 @app.route('/api/get_mp3')
 def get_mp3_api():
-    video_url = request.args.get('url')
-    title     = request.args.get('title', 'audio')
+    # Prioritas: tiktok_url (URL asli TikTok untuk yt-dlp extract)
+    # Fallback: url (bisa CDN tapi yt-dlp coba download langsung)
+    tiktok_url = request.args.get('tiktok_url') or request.args.get('url')
+    title      = request.args.get('title', 'audio')
 
-    if not video_url:
+    if not tiktok_url:
         return "URL Kosong", 400
 
     safe_title = re.sub(r'[^a-zA-Z0-9]', '_', title)[:40] or 'audio'
-    tmp_dir    = '/tmp'
-    # yt-dlp akan nulis file dengan nama ini (tanpa ekstensi, dia yang tambahin)
-    out_tmpl   = os.path.join(tmp_dir, f'vinder_mp3_{safe_title}')
-    out_mp3    = out_tmpl + '.mp3'
+    # Pakai timestamp unik biar tidak bentrok kalau ada request bersamaan
+    uid      = str(int(time.time() * 1000))
+    out_tmpl = f'/tmp/vinder_{uid}'
+    out_mp3  = out_tmpl + '.mp3'
 
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': out_tmpl + '.%(ext)s',
         'postprocessors': [
             {
-                # Konversi langsung ke MP3 via ffmpeg — no manual subprocess
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
                 'preferredquality': '192',
             },
             {
-                # Embed thumbnail sebagai cover art ID3 — yt-dlp + ffmpeg handle sendiri
+                # Embed thumbnail sebagai cover art ID3
                 'key': 'EmbedThumbnail',
             },
             {
-                # Embed metadata (title, uploader, dll) ke tag ID3
+                # Embed metadata title, uploader dll ke ID3 tag
                 'key': 'FFmpegMetadata',
                 'add_metadata': True,
             },
         ],
-        'writethumbnail': True,   # download thumbnail dulu supaya bisa di-embed
+        'writethumbnail': True,
         'quiet': True,
         'no_warnings': True,
         'noplaylist': True,
@@ -242,40 +245,49 @@ def get_mp3_api():
         'http_headers': DEFAULT_HEADERS,
     }
 
+    def do_cleanup():
+        for ext in ['.mp3', '.jpg', '.jpeg', '.png', '.webp', '.m4a', '.webm', '.opus']:
+            f = out_tmpl + ext
+            if os.path.exists(f):
+                try:
+                    os.remove(f)
+                    logger.info(f"🧹 Cleanup: {f}")
+                except Exception:
+                    pass
+
     try:
-        logger.info(f"🎵 MP3 Processing: {video_url}")
+        logger.info(f"🎵 MP3 Processing: {tiktok_url}")
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([video_url])
+            ydl.download([tiktok_url])
 
         if not os.path.exists(out_mp3):
             logger.error("❌ File MP3 tidak ditemukan setelah proses yt-dlp")
+            do_cleanup()
             return "Gagal: File MP3 tidak berhasil dibuat.", 500
 
-        logger.info(f"✅ MP3 siap: {out_mp3}")
+        logger.info(f"✅ MP3 siap dikirim: {out_mp3}")
 
-        # Kirim file ke user, lalu cleanup otomatis setelah response selesai
-        return send_file(
-            out_mp3,
+        # Baca file ke memory dulu, BARU cleanup, BARU kirim
+        # Ini solusi paling aman — hindari race condition finally vs send_file
+        with open(out_mp3, 'rb') as f:
+            audio_data = f.read()
+
+        do_cleanup()
+
+        return Response(
+            audio_data,
             mimetype='audio/mpeg',
-            as_attachment=True,
-            download_name=f'[vinder]_{safe_title}.mp3'
+            headers={
+                'Content-Disposition': f'attachment; filename="[vinder]_{safe_title}.mp3"',
+                'Content-Length': str(len(audio_data)),
+            }
         )
 
     except Exception as e:
         logger.error(f"MP3 Error: {str(e)}")
+        do_cleanup()
         return f"Error: {str(e)}", 500
-
-    finally:
-        # Cleanup semua file temp (mp3 + thumbnail)
-        for ext in ['.mp3', '.jpg', '.jpeg', '.png', '.webp']:
-            tmp_file = out_tmpl + ext
-            if os.path.exists(tmp_file):
-                try:
-                    os.remove(tmp_file)
-                    logger.info(f"🧹 Cleanup: {tmp_file}")
-                except Exception:
-                    pass
 
 
 if __name__ == "__main__":
