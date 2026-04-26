@@ -241,7 +241,7 @@ def get_mp3_api():
     if not tiktok_url:
         return "URL Kosong", 400
 
-    # Resolve short URL dulu (vt.tiktok.com → www.tiktok.com/...)
+    # Resolve short URL dulu
     if 'vt.tiktok.com' in tiktok_url or 'vm.tiktok.com' in tiktok_url:
         tiktok_url = resolve_tiktok_url(tiktok_url)
 
@@ -250,24 +250,8 @@ def get_mp3_api():
     out_tmpl   = f'/tmp/vinder_{uid}'
     out_mp3    = out_tmpl + '.mp3'
 
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'outtmpl': out_tmpl + '.%(ext)s',
-        'postprocessors': [
-            {'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'},
-            {'key': 'EmbedThumbnail'},
-            {'key': 'FFmpegMetadata', 'add_metadata': True},
-        ],
-        'writethumbnail': True,
-        'quiet': True,
-        'no_warnings': True,
-        'noplaylist': True,
-        'user_agent': TIKTOK_UA,
-        'http_headers': DEFAULT_HEADERS,
-    }
-
     def do_cleanup():
-        for ext in ['.mp3', '.jpg', '.jpeg', '.png', '.webp', '.m4a', '.webm', '.opus']:
+        for ext in ['.mp3', '.jpg', '.jpeg', '.png', '.webp', '.m4a', '.webm', '.opus', '_tagged.mp3']:
             f = out_tmpl + ext
             if os.path.exists(f):
                 try:
@@ -275,62 +259,78 @@ def get_mp3_api():
                 except Exception:
                     pass
 
-    try:
-        logger.info(f"🎵 MP3 Processing (yt-dlp): {tiktok_url}")
-
+    def embed_cover_ffmpeg(mp3_path, cover_url):
+        """Embed cover art ke MP3 via ffmpeg. Tidak fatal kalau gagal."""
         try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([tiktok_url])
-        except Exception as ydl_err:
-            logger.warning(f"⚠️ yt-dlp gagal: {ydl_err} — coba fallback TikWM...")
+            cover_resp = session.get(cover_url, timeout=15)
+            cover_path = out_tmpl + '.jpg'
+            with open(cover_path, 'wb') as f:
+                f.write(cover_resp.content)
+            tagged = out_tmpl + '_tagged.mp3'
+            import subprocess
+            subprocess.run([
+                'ffmpeg', '-y',
+                '-i', mp3_path,
+                '-i', cover_path,
+                '-map', '0:a', '-map', '1:v',
+                '-c:a', 'copy', '-c:v', 'mjpeg',
+                '-id3v2_version', '3',
+                '-metadata:s:v', 'title=Album cover',
+                '-metadata:s:v', 'comment=Cover (front)',
+                tagged
+            ], check=True, capture_output=True, timeout=30)
+            os.replace(tagged, mp3_path)
+            logger.info("🖼️ Cover art berhasil di-embed")
+        except Exception as e:
+            logger.warning(f"⚠️ Cover embed gagal (tidak fatal): {e}")
 
-            # Fallback: ambil audio URL langsung dari TikWM, download manual
-            music_url, cover_url, api_title = get_tiktok_audio_via_tikwm(tiktok_url)
-            if not music_url:
-                raise Exception(f"yt-dlp gagal dan TikWM fallback tidak menemukan audio. Error awal: {ydl_err}")
+    try:
+        # ── STEP 1: Ambil info dari TikWM API (cepet, cuma metadata + direct URL) ──
+        logger.info(f"🎵 MP3 via TikWM API: {tiktok_url}")
+        music_url, cover_url, api_title = get_tiktok_audio_via_tikwm(tiktok_url)
 
-            logger.info(f"🎵 Fallback TikWM audio: {music_url}")
+        if music_url:
+            # ── STEP 2: Download audio langsung — ini cuma audio, bukan video ──
             title = api_title or title
+            safe_title = re.sub(r'[^a-zA-Z0-9]', '_', title)[:40] or 'audio'
+            logger.info(f"⬇️ Download audio langsung: {music_url}")
 
-            # Download audio langsung
             audio_resp = session.get(music_url, headers=DEFAULT_HEADERS, timeout=60, stream=True)
             audio_resp.raise_for_status()
-            raw_audio = out_tmpl + '.mp3'
-            with open(raw_audio, 'wb') as f:
-                for chunk in audio_resp.iter_content(chunk_size=1024 * 512):
+            with open(out_mp3, 'wb') as f:
+                for chunk in audio_resp.iter_content(chunk_size=1024 * 256):
                     f.write(chunk)
 
-            # Embed cover art manual pakai ffmpeg kalau ada
+            # ── STEP 3: Embed cover art (paralel-ish, cepet) ──
             if cover_url:
-                try:
-                    cover_resp = session.get(cover_url, timeout=15)
-                    cover_path = out_tmpl + '.jpg'
-                    with open(cover_path, 'wb') as f:
-                        f.write(cover_resp.content)
-                    # ffmpeg embed cover ke mp3
-                    import subprocess
-                    tagged = out_tmpl + '_tagged.mp3'
-                    subprocess.run([
-                        'ffmpeg', '-y',
-                        '-i', raw_audio,
-                        '-i', cover_path,
-                        '-map', '0:a', '-map', '1:v',
-                        '-c:a', 'copy', '-c:v', 'mjpeg',
-                        '-id3v2_version', '3',
-                        '-metadata:s:v', 'title=Album cover',
-                        '-metadata:s:v', 'comment=Cover (front)',
-                        tagged
-                    ], check=True, capture_output=True)
-                    os.replace(tagged, raw_audio)
-                except Exception as cover_err:
-                    logger.warning(f"⚠️ Cover embed gagal (tidak fatal): {cover_err}")
+                embed_cover_ffmpeg(out_mp3, cover_url)
+
+        else:
+            # ── FALLBACK: TikWM gagal → pakai yt-dlp (lebih lambat) ──
+            logger.warning("⚠️ TikWM tidak return audio, fallback ke yt-dlp...")
+            ydl_opts = {
+                'format': 'bestaudio/best',
+                'outtmpl': out_tmpl + '.%(ext)s',
+                'postprocessors': [
+                    {'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'},
+                    {'key': 'EmbedThumbnail'},
+                    {'key': 'FFmpegMetadata', 'add_metadata': True},
+                ],
+                'writethumbnail': True,
+                'quiet': True,
+                'no_warnings': True,
+                'noplaylist': True,
+                'user_agent': TIKTOK_UA,
+                'http_headers': DEFAULT_HEADERS,
+            }
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([tiktok_url])
 
         if not os.path.exists(out_mp3):
             do_cleanup()
             return "Gagal: File MP3 tidak berhasil dibuat.", 500
 
         logger.info(f"✅ MP3 siap dikirim: {out_mp3}")
-
         with open(out_mp3, 'rb') as f:
             audio_data = f.read()
 
