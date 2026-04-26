@@ -767,8 +767,7 @@
     }
     .btn-send:hover { background: var(--accent-hover); box-shadow: 0 4px 16px var(--accent-glow); }
 
-     
-   
+    
     /* ===== DONATE MODAL ===== */
     .donate-modal-sheet {
       background: #141414;
@@ -1159,6 +1158,7 @@
       const data = await resp.json();
       if (data.status === 'success') {
         currentPreviewData = data;
+        currentPreviewData.tiktok_url = url; // simpan URL asli TikTok untuk MP3 yt-dlp
         container.innerHTML = `
           <div class="preview-card">
             <img src="${data.cover}" class="preview-thumb">
@@ -1286,10 +1286,14 @@
   function getDownloadUrl(v, resolution) {
     const t = new Date().getTime();
     if (selectedFormat === 'mp3') {
-      // MP3: kirim URL asli video ke backend, biar yt-dlp yang ekstrak audio
-      const srcUrl = v.hdplay || v.play || v.music || '';
-      if (!srcUrl) return '';
-      return `/api/get_mp3?url=${encodeURIComponent(srcUrl)}&title=${encodeURIComponent(v.title)}&nocache=${t}`;
+      // MP3: yt-dlp butuh URL TikTok asli (bukan CDN)
+      // v.tiktok_url diisi dari doDownloadUrl (URL yang user paste)
+      // v.video_id diisi dari search results untuk reconstruct TikTok URL
+      const ttUrl = v.tiktok_url
+        || (v.video_id ? `https://www.tiktok.com/@${v.author_id || 'user'}/video/${v.video_id}` : '')
+        || v.hdplay || v.play || '';
+      if (!ttUrl) return '';
+      return `/api/get_mp3?url=${encodeURIComponent(ttUrl)}&title=${encodeURIComponent(v.title)}&nocache=${t}`;
     }
     // MP4: proxy stream biasa
     let vUrl = (resolution === 'HYPE v1.3') ? (v.hdplay || v.play) : (v.play || v.hdplay);
@@ -1375,6 +1379,9 @@
       });
       const data = await resp.json();
       if (data.status === 'success') {
+        // Inject tiktok_url asli (yang user paste) ke data
+        // supaya getDownloadUrl bisa kirim ke /api/get_mp3 dengan URL yang bisa di-extract yt-dlp
+        data.tiktok_url = url;
         const dUrl = getDownloadUrl(data, resolution);
         handleRealDownload(dUrl, data.title);
       } else {
