@@ -767,7 +767,8 @@
     }
     .btn-send:hover { background: var(--accent-hover); box-shadow: 0 4px 16px var(--accent-glow); }
 
-    
+     
+   
     /* ===== DONATE MODAL ===== */
     .donate-modal-sheet {
       background: #141414;
@@ -1232,27 +1233,67 @@
     setTimeout(() => el.remove(), 400);
   }
 
-  function handleRealDownload(dUrl, title) {
+  async function handleRealDownload(dUrl, title) {
     const bubble = createBubble(title);
-    try {
-      const a = document.createElement('a');
-      a.href = dUrl;
-      a.target = '_blank';
-      const ext = selectedFormat === 'mp3' ? '.mp3' : '.mp4';
-      a.download = title.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ext;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => { bubble.updateProgress(100); bubble.setSuccess(); }, 1500);
-    } catch (e) {
-      bubble.setError(e.message);
+    const ext = selectedFormat === 'mp3' ? '.mp3' : '.mp4';
+    const filename = title.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ext;
+
+    if (selectedFormat === 'mp3') {
+      // MP3: fetch dulu — tunggu backend selesai download + konversi + embed cover
+      // Baru trigger download ke user setelah file beneran jadi
+      try {
+        bubble.updateProgress(10);
+        bubble.el && (bubble.el.querySelector('.dl-bubble-sub').textContent = '🎵 Memproses audio...');
+
+        const resp = await fetch(dUrl);
+        if (!resp.ok) throw new Error(`Server error: ${resp.status}`);
+
+        bubble.updateProgress(70);
+        const blob = await resp.blob();
+        bubble.updateProgress(95);
+
+        const objUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(objUrl), 3000);
+
+        bubble.updateProgress(100);
+        bubble.setSuccess();
+      } catch (e) {
+        bubble.setError(e.message);
+      }
+    } else {
+      // MP4: langsung trigger download via <a> tag, stream langsung dari server
+      try {
+        const a = document.createElement('a');
+        a.href = dUrl;
+        a.target = '_blank';
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => { bubble.updateProgress(100); bubble.setSuccess(); }, 1500);
+      } catch (e) {
+        bubble.setError(e.message);
+      }
     }
   }
 
   function getDownloadUrl(v, resolution) {
+    const t = new Date().getTime();
+    if (selectedFormat === 'mp3') {
+      // MP3: kirim URL asli video ke backend, biar yt-dlp yang ekstrak audio
+      const srcUrl = v.hdplay || v.play || v.music || '';
+      if (!srcUrl) return '';
+      return `/api/get_mp3?url=${encodeURIComponent(srcUrl)}&title=${encodeURIComponent(v.title)}&nocache=${t}`;
+    }
+    // MP4: proxy stream biasa
     let vUrl = (resolution === 'HYPE v1.3') ? (v.hdplay || v.play) : (v.play || v.hdplay);
     if (!vUrl) return '';
-    const t = new Date().getTime();
     return `/api/get_video?url=${encodeURIComponent(vUrl)}&title=${encodeURIComponent(v.title)}&mode=${encodeURIComponent(resolution)}&format=${selectedFormat}&nocache=${t}`;
   }
 
@@ -1295,9 +1336,9 @@
               <span class="meta-tag">⏱ ${v.duration}</span>
               <span class="meta-tag">💾 ${v.size}</span>
             </div>
-                     <a href="${dUrl}" download class="btn-dl" style="text-decoration:none;" onclick="createBubble('${v.title.replace(/'/g,"")}').setSuccess()">
-              ⬇Download ${selectedFormat.toUpperCase()}
-            </a>
+            <button class="btn-dl" onclick="handleRealDownload('${dUrl.replace(/'/g, "\\'")}', '${v.title.replace(/'/g, "\\'")}')">
+              ⬇ Download ${selectedFormat.toUpperCase()}
+            </button>
           </div>
         `;
         resultsEl.appendChild(div);
