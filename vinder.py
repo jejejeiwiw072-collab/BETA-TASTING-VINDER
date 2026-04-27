@@ -580,269 +580,28 @@ def mp3_progress_api():
                 }
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(url, download=True)
-           final_title = info.get('title', title)
-
-        # yt-dlp output ke .mp3 karena FFmpegExtractAudio
-        if not os.path.exists(out_mp3):
-            for f in os.listdir('/tmp'):
-                candidate = f'/tmp/{f}'
-                if candidate.startswith(out_tmpl) and candidate.endswith('.mp3'):
-                    os.rename(candidate, out_mp3)
-                    break
-
-    return out_mp3, final_title
-
-
-# =============================================================================
-# ROUTES
-# =============================================================================
-
-@app.route('/')
-def index():
-    return send_file('vinder.html')
-
-
-@app.route('/api/search', methods=['POST'])
-def search_videos_api():
-    data    = request.json
-    keyword = data.get('keyword')
-    limit   = data.get('limit', 10)
-    logger.info(f"🔍 Searching for: {keyword}")
-
-    try:
-        resp = session.post(
-            "https://www.tikwm.com/api/feed/search",
-            data={"keywords": keyword, "count": limit, "HD": 1},
-            timeout=30,
-        )
-        resp.raise_for_status()
-        json_data = resp.json()
-
-        if json_data.get('code') != 0:
-            msg = json_data.get('msg', 'API TikWM return non-zero code')
-            logger.error(f"❌ TikWM API Error: {msg}")
-            return jsonify({"status": "error", "msg": f"TikWM API: {msg}"})
-
-        videos  = json_data.get('data', {}).get('videos', [])
-        results = []
-
-        for v in videos:
-            cover_url  = v.get('origin_cover') or v.get('cover') or ''
-            size_bytes = v.get('size', 0)
-            size_mb    = round(size_bytes / (1024 * 1024), 2) if size_bytes else "?"
-            author     = v.get('author', {})
-
-            results.append({
-                'title':     v.get('title', 'Video TikTok'),
-                'duration':  format_durasi(v.get('duration')),
-                'play':      v.get('play', ''),
-                'hdplay':    v.get('hdplay', '') or v.get('play', ''),
-                'cover':     cover_url,
-                'size':      f"{size_mb} MB",
-                'video_id':  v.get('id', ''),
-                'author_id': author.get('id', '') if isinstance(author, dict) else '',
-            })
-
-        logger.info(f"✅ Found {len(results)} videos")
-        return jsonify({"status": "success", "data": results})
-
-    except Exception as e:
-        logger.error(f"Search Error: {str(e)}")
-        return jsonify({"status": "error", "msg": str(e)})
-
-
-@app.route('/api/download_url', methods=['POST'])
-def download_url_api():
-    data      = request.json
-    url_input = data.get('url')
-    logger.info(f"🔗 Processing: {url_input}")
-
-    ydl_opts = {
-        'format':       'bestvideo+bestaudio/best',
-        'quiet':        True,
-        'no_warnings':  True,
-        'noplaylist':   True,
-        'user_agent':   TIKTOK_UA,
-        'http_headers': DEFAULT_HEADERS,
-    }
-
-    try:
-        if any(x in url_input for x in ['tiktok.com', 'vt.tiktok.com', 'vm.tiktok.com']):
-            resp = requests.get(f"https://www.tikwm.com/api/?url={url_input}").json()
-            if resp.get('code') == 0:
-                v = resp['data']
-                return jsonify({
-                    "status":   "success",
-                    "title":    v.get('title', 'TikTok Video'),
-                    "cover":    v.get('cover'),
-                    "author":   v.get('author', {}).get('nickname', 'User'),
-                    "duration": f"{v.get('duration', 0)}s",
-                    "size":     f"{v.get('size', 0) / 1024 / 1024:.2f}MB",
-                    "play":     v.get('play'),
-                    "hdplay":   v.get('hdplay'),
-                    "music":    v.get('music'),
-                })
-
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url_input, download=False)
-            return jsonify({
-                "status":   "success",
-                "title":    info.get('title', 'Video'),
-                "cover":    info.get('thumbnail'),
-                "author":   info.get('uploader', 'Unknown'),
-                "duration": f"{info.get('duration', 0)}s",
-                "size":     "N/A",
-                "play":     info.get('url'),
-                "hdplay":   info.get('url'),
-            })
-
-    except Exception as e:
-        return jsonify({"status": "error", "msg": str(e)})
-
-
-@app.route('/api/get_video')
-def get_video_api():
-    video_url    = request.args.get('url')
-    fallback_url = request.args.get('fallback')
-    title        = request.args.get('title', 'video')
-
-    if not video_url:
-        return "URL Kosong", 400
-
-    try:
-        r, _ = fetch_video_stream(video_url, fallback_url)
-
-        if r is None or r.status_code >= 400:
-            return "Gagal: Video tidak ditemukan atau link kadaluarsa.", 403
-
-        content_type = r.headers.get('Content-Type', '').lower()
-        if 'text/html' in content_type:
-            return "Gagal: Server mengirimkan file korup (HTML).", 403
-
-        fname = f'[Vinder].{safe_filename(title)}.mp4'
-        return Response(
-            stream_with_context(r.iter_content(chunk_size=1024 * 1024)),
-            headers={
-                'Content-Type':        content_type,
-                'Content-Disposition': f'attachment; filename="{fname}"',
-                'Cache-Control':       'no-cache',
-            }
-        )
-
-    except Exception as e:
-        return f"Error: {str(e)}", 500
-
-
-@app.route('/api/mp3_progress')
-def mp3_progress_api():
-    """
-    SSE endpoint — push progress real-time ke frontend tiap tahap selesai.
-    Format pesan : "data: {pct}|{msg}\\n\\n"
-    Pesan selesai: "data: 100|✅ DONE|{uid}|{filename}\\n\\n"
-    Pesan error  : "data: -1|❌ {msg}\\n\\n"
-    """
-    tiktok_url = request.args.get('url')
-    title      = request.args.get('title', 'audio')
-
-    if not tiktok_url:
-        return "URL Kosong", 400
-
-    def generate():
-        def send(pct, msg):
-            return f"data: {pct}|{msg}\n\n"
-
-        uid         = str(int(time.time() * 1000))
-        out_tmpl    = f'/tmp/vinder_{uid}'
-        final_title = title
-
-        error_msg  = None
-        status_msg = None
-
-        try:
-            url = tiktok_url
-            if 'vt.tiktok.com' in url or 'vm.tiktok.com' in url:
-                url = resolve_tiktok_url(url)
-
-            video_url, cover_url, api_title = get_meta_via_tikwm(url)
-            final_title = api_title or title
-
-            if video_url:
-                download_video_with_retry(video_url, out_tmpl + '.mp4')
-                extract_audio_ffmpeg(out_tmpl + '.mp4', out_tmpl + '.mp3')
-                cover_path = extract_frame_at_2s(out_tmpl + '.mp4', out_tmpl)
-
-                try:
-                    os.remove(out_tmpl + '.mp4')
-                except Exception:
-                    pass
-
-                if not cover_path and cover_url:
-                    try:
-                        cover_path = out_tmpl + '_cover.jpg'
-                        cr = session.get(cover_url, timeout=15)
-                        with open(cover_path, 'wb') as f:
-                            f.write(cr.content)
-                    except Exception:
-                        cover_path = None
-
-                if cover_path:
-                    embed_cover(out_tmpl + '.mp3', cover_path, out_tmpl)
-
-            else:
-                ydl_opts = {
-                    'format':         'bestaudio/best',
-                    'outtmpl':        out_tmpl + '.%(ext)s',
-                    'postprocessors': [{
-                        'key':              'FFmpegExtractAudio',
-                        'preferredcodec':   'mp3',
-                        'preferredquality': '192',
-                    }],
-                    'writethumbnail': False,
-                    'quiet':          True,
-                    'no_warnings':    True,
-                    'noplaylist':     True,
-                    'socket_timeout': 20,
-                    'user_agent':     TIKTOK_UA,
-                    'http_headers':   DEFAULT_HEADERS,
-                }
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(url, download=True)
                     final_title = info.get('title', title)
 
-                expected = out_tmpl + '.mp3'
-                if not os.path.exists(expected):
-                    for f in os.listdir('/tmp'):
-                        candidate = f'/tmp/{f}'
-                        if candidate.startswith(out_tmpl) and candidate.endswith('.mp3'):
-                            os.rename(candidate, expected)
-                            break
+                if not os.path.exists(out_tmpl + '.mp3') and os.path.exists(out_tmpl + '.mp3.mp3'):
+                    os.rename(out_tmpl + '.mp3.mp3', out_tmpl + '.mp3')
 
             if not os.path.exists(out_tmpl + '.mp3'):
-                error_msg = "❌ File MP3 tidak berhasil dibuat"
-            else:
-                filename = f"[Vinder].{safe_filename(final_title)}.mp3"
-                with open(out_tmpl + '.ready', 'w') as f:
-                    f.write(filename)
-                status_msg = f"✅ DONE|{uid}|{filename}"
+                yield send(-1, "❌ File MP3 tidak berhasil dibuat")
+                do_cleanup(out_tmpl)
+                return
+
+            filename = f"[Vinder].{safe_filename(final_title)}.mp3"
+
+            yield send(95, "📦 Siapkan file...")
+            with open(out_tmpl + '.ready', 'w') as f:
+                f.write(filename)
+
+            yield send(100, f"✅ DONE|{uid}|{filename}")
 
         except Exception as e:
             logger.error(f"SSE MP3 Error: {e}")
-            error_msg = f"❌ Error: {str(e)[:100]}"
-
-        # Yield di luar try/except — aman untuk generator
-        if error_msg:
             do_cleanup(out_tmpl)
-            yield send(-1, error_msg)
-            return
-
-        yield send(5,  "🔗 Resolve URL...")
-        yield send(15, "📡 Ambil metadata...")
-        yield send(30, "⬇️ Download video...")
-        yield send(60, "🎵 Extract audio...")
-        yield send(75, "🖼️ Ambil cover frame...")
-        yield send(85, "🖼️ Embed cover art...")
-        yield send(95, "📦 Siapkan file...")
-        yield send(100, status_msg)
+            yield send(-1, f"❌ Error: {str(e)[:100]}")
 
     return Response(
         stream_with_context(generate()),
@@ -939,4 +698,3 @@ def get_mp3_api():
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, threaded=True)
-                
