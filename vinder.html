@@ -1210,6 +1210,7 @@
     const sub = el.querySelector('.dl-bubble-sub');
     return {
       updateProgress(p) { bar.style.width = p + '%'; sub.textContent = 'Mengunduh: ' + Math.round(p) + '%'; },
+      setMsg(msg) { sub.textContent = msg; },
       setSuccess() {
         el.querySelector('.dl-bubble-icon').textContent = '✅';
         el.querySelector('.dl-bubble-icon').className = 'dl-bubble-icon success';
@@ -1240,29 +1241,62 @@
     const filename = `[Vinder].${safeTitle}${ext}`;
 
     if (selectedFormat === 'mp3') {
-      // MP3: fetch dulu — tunggu backend selesai download + konversi + embed cover
-      // Baru trigger download ke user setelah file beneran jadi
+      // MP3: pakai SSE untuk progress real-time dari backend
       try {
-        bubble.updateProgress(10);
-        bubble.el && (bubble.el.querySelector('.dl-bubble-sub').textContent = '🎵 Memproses audio...');
+        const sseUrl = dUrl.replace('/api/get_mp3', '/api/mp3_progress');
+        const evtSrc = new EventSource(sseUrl);
 
-        const resp = await fetch(dUrl);
-        if (!resp.ok) throw new Error(`Server error: ${resp.status}`);
+        await new Promise((resolve, reject) => {
+          evtSrc.onmessage = async (e) => {
+            const [pctStr, ...msgParts] = e.data.split('|');
+            const pct = parseInt(pctStr);
+            const msg = msgParts.join('|');
 
-        bubble.updateProgress(70);
-        const blob = await resp.blob();
-        bubble.updateProgress(95);
+            if (pct === -1) {
+              evtSrc.close();
+              reject(new Error(msg.replace('❌ Error: ', '')));
+              return;
+            }
 
-        const objUrl = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = objUrl;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(objUrl), 3000);
+            // Update progress bar + label
+            bubble.updateProgress(pct);
+            bubble.setMsg(msg);
 
-        bubble.updateProgress(100);
+            if (pct === 100) {
+              evtSrc.close();
+              // Parse uid dan filename dari pesan DONE
+              // format: "✅ DONE|uid|filename"
+              const parts = msg.split('|');
+              const uid      = parts[1];
+              const fileName = parts[2] || filename;
+
+              try {
+                bubble.setMsg('📦 Mengambil file...');
+                const fileResp = await fetch(`/api/get_mp3_file?uid=${uid}`);
+                if (!fileResp.ok) throw new Error(`Gagal ambil file: ${fileResp.status}`);
+                const blob = await fileResp.blob();
+
+                const objUrl = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = objUrl;
+                a.download = fileName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(objUrl), 3000);
+                resolve();
+              } catch(fetchErr) {
+                reject(fetchErr);
+              }
+            }
+          };
+
+          evtSrc.onerror = (e) => {
+            evtSrc.close();
+            reject(new Error('Koneksi ke server terputus'));
+          };
+        });
+
         bubble.setSuccess();
       } catch (e) {
         bubble.setError(e.message);
