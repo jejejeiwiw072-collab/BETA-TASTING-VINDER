@@ -59,6 +59,44 @@ def format_durasi(detik):
         return "?"
 
 
+def parse_filter_durasi(filter_str):
+    """
+    Parse string filter durasi ke (operator, detik).
+    Format: '< 30 s', '> 5 m', '< 2 h'  (spasi bebas, case-insensitive)
+    Satuan: s = detik, m = menit, h = jam
+    Return: (operator, total_detik) atau (None, None) kalau gagal parse.
+    """
+    if not filter_str:
+        return None, None
+    try:
+        # Normalisasi: lowercase, strip, hapus spasi berlebih
+        f = filter_str.strip().lower()
+        # Regex: operator (</>), angka (int/float), satuan (s/m/h)
+        match = re.match(r'^([<>])\s*(\d+(?:\.\d+)?)\s*([smh])$', f)
+        if not match:
+            return None, None
+        op, angka, satuan = match.group(1), float(match.group(2)), match.group(3)
+        multiplier = {'s': 1, 'm': 60, 'h': 3600}[satuan]
+        return op, angka * multiplier
+    except Exception:
+        return None, None
+
+
+def lolos_filter(durasi_detik, op, batas_detik):
+    """Cek apakah durasi video lolos filter. Return True kalau lolos."""
+    if op is None or durasi_detik is None:
+        return True
+    try:
+        d = float(durasi_detik)
+        if op == '<':
+            return d < batas_detik
+        if op == '>':
+            return d > batas_detik
+    except Exception:
+        pass
+    return True
+
+
 def resolve_tiktok_url(url):
     """Resolve short URL (vt.tiktok.com / vm.tiktok.com) ke URL panjang."""
     try:
@@ -371,10 +409,16 @@ def index():
 
 @app.route('/api/search', methods=['POST'])
 def search_videos_api():
-    data    = request.json
-    keyword = data.get('keyword')
-    limit   = data.get('limit', 10)
-    logger.info(f"🔍 Searching for: {keyword}")
+    data       = request.json
+    keyword    = data.get('keyword')
+    limit      = data.get('limit', 10)
+    filter_str = data.get('filter', '').strip()
+    logger.info(f"🔍 Searching for: {keyword} | filter: '{filter_str}'")
+
+    # Parse filter durasi sekali di awal
+    filter_op, filter_detik = parse_filter_durasi(filter_str)
+    if filter_str and filter_op is None:
+        logger.warning(f"⚠️ Format filter tidak dikenali: '{filter_str}'")
 
     try:
         resp = session.post(
@@ -394,6 +438,12 @@ def search_videos_api():
         results = []
 
         for v in videos:
+            durasi_detik = v.get('duration')  # angka mentah dari API (dalam detik)
+
+            # Terapkan filter durasi — skip video yang tidak lolos
+            if not lolos_filter(durasi_detik, filter_op, filter_detik):
+                continue
+
             cover_url  = v.get('origin_cover') or v.get('cover') or ''
             size_bytes = v.get('size', 0)
             size_mb    = round(size_bytes / (1024 * 1024), 2) if size_bytes else "?"
@@ -401,7 +451,7 @@ def search_videos_api():
 
             results.append({
                 'title':     v.get('title', 'Video TikTok'),
-                'duration':  format_durasi(v.get('duration')),
+                'duration':  format_durasi(durasi_detik),
                 'play':      v.get('play', ''),
                 'hdplay':    v.get('hdplay', '') or v.get('play', ''),
                 'cover':     cover_url,
@@ -410,7 +460,7 @@ def search_videos_api():
                 'author_id': author.get('id', '') if isinstance(author, dict) else '',
             })
 
-        logger.info(f"✅ Found {len(results)} videos")
+        logger.info(f"✅ Found {len(results)} videos (after filter)")
         return jsonify({"status": "success", "data": results})
 
     except Exception as e:
