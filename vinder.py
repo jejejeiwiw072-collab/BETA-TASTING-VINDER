@@ -6,7 +6,6 @@ import logging
 import subprocess
 import yt_dlp
 from flask import Flask, request, jsonify, send_file, Response, stream_with_context
-from flask_cors import CORS
 
 
 # =============================================================================
@@ -20,6 +19,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder='.', static_url_path='')
+
+from flask_cors import CORS
 CORS(app)
 
 TIKTOK_UA = (
@@ -69,9 +70,7 @@ def parse_filter_durasi(filter_str):
     if not filter_str:
         return None, None
     try:
-        # Normalisasi: lowercase, strip, hapus spasi berlebih
         f = filter_str.strip().lower()
-        # Regex: operator (</>), angka (int/float), satuan (s/m/h)
         match = re.match(r'^([<>])\s*(\d+(?:\.\d+)?)\s*([smh])$', f)
         if not match:
             return None, None
@@ -115,10 +114,7 @@ def safe_filename(title, max_len=60):
 
 def do_cleanup(out_tmpl):
     """Hapus semua file temp yang terkait satu sesi download."""
-    suffixes = [
-        '.mp3', '.mp4', '_cover.jpg', '_tagged.mp3',
-        '.m4a', '.webm', '.opus', '.ready',
-    ]
+    suffixes = ['.mp4', '.mp3', '_cover.jpg', '.ready']
     for suffix in suffixes:
         path = out_tmpl + suffix
         if os.path.exists(path):
@@ -206,102 +202,87 @@ def get_meta_via_tikwm(tiktok_url, retries=3):
             logger.warning(f"⚠️ TikWM gagal attempt {attempt}: {e}")
 
         if attempt < retries:
-            time.sleep(1.5 * attempt)  # backoff: 1.5s → 3s
+            time.sleep(1.5 * attempt)
 
     return None, None, None
 
 
-def download_video_with_retry(video_url, out_vid, retries=3):
+def download_video_to_temp(video_url, out_mp4):
     """
-    Download video ke file temp dengan retry otomatis.
-    Validasi ukuran file setelah download.
+    Download video dari URL ke file .mp4 sementara di server (/tmp/).
+    Sama persis seperti sistem MP4, tapi disimpan di server dulu.
+    Tidak masuk ke penyimpanan user.
     """
-    last_err = None
+    headers = TIKTOK_HEADERS.copy()
+    headers["Range"] = "bytes=0-"
 
-    for attempt in range(1, retries + 1):
-        try:
-            logger.info(f"⬇️ Download video attempt {attempt}...")
-            r = session.get(video_url, headers=TIKTOK_HEADERS, timeout=90, stream=True)
-            r.raise_for_status()
+    logger.info(f"⬇️ Download video ke temp: {out_mp4}")
+    r = session.get(video_url, stream=True, timeout=60, headers=headers, allow_redirects=True)
+    r.raise_for_status()
 
-            content_type = r.headers.get('Content-Type', '').lower()
-            if 'text/html' in content_type or 'application/json' in content_type:
-                raise ValueError(f"Server kirim non-video: {content_type}")
+    with open(out_mp4, 'wb') as f:
+        for chunk in r.iter_content(chunk_size=1024 * 1024):
+            if chunk:
+                f.write(chunk)
 
-            with open(out_vid, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=512 * 1024):
-                    f.write(chunk)
-
-            size = os.path.getsize(out_vid)
-            if size < 50_000:
-                raise ValueError(f"File terlalu kecil ({size} bytes)")
-
-            logger.info(f"✅ Video downloaded: {size / 1024 / 1024:.2f} MB")
-            return True
-
-        except Exception as e:
-            last_err = e
-            logger.warning(f"⚠️ Download gagal attempt {attempt}: {e}")
-            if os.path.exists(out_vid):
-                os.remove(out_vid)
-            if attempt < retries:
-                time.sleep(2 * attempt)  # backoff: 2s → 4s
-
-    raise RuntimeError(f"Download gagal setelah {retries}x: {last_err}")
+    size_mb = os.path.getsize(out_mp4) / 1024 / 1024
+    logger.info(f"✅ Video berhasil didownload ({size_mb:.2f} MB): {out_mp4}")
 
 
-def extract_audio_ffmpeg(in_vid, out_mp3):
-    """Extract audio dari file video ke MP3 via ffmpeg."""
+def convert_mp4_to_mp3(out_mp4, out_mp3):
+    """
+    Convert file .mp4 yang sudah ada di server → .mp3.
+    ffmpeg baca dari local file (lebih stabil dari stream URL).
+    Setelah selesai, file .mp4 temp dihapus otomatis.
+    """
+    cmd = [
+        'ffmpeg', '-y',
+        '-i', out_mp4,
+        '-vn',
+        '-acodec', 'libmp3lame',
+        '-ab', '192k',
+        '-ar', '44100',
+        out_mp3,
+    ]
     result = subprocess.run(
-        [
-            'ffmpeg', '-y',
-            '-i',      in_vid,
-            '-vn',
-            '-acodec', 'libmp3lame',
-            '-ab',     '192k',
-            '-ar',     '44100',
-            out_mp3,
-        ],
+        cmd,
         capture_output=True,
-        timeout=120,
+        timeout=180,
     )
-    if result.returncode != 0:
-        err = result.stderr.decode(errors='ignore')[-200:]
-        raise RuntimeError(f"ffmpeg extract audio gagal: {err}")
-    logger.info("🎵 Audio berhasil di-extract")
-
-
-def extract_frame_at_2s(video_path, out_tmpl):
-    """
-    Ambil 1 frame di detik ke-2 dari video sebagai cover art.
-    Return: path cover kalau berhasil, None kalau gagal.
-    """
-    cover_path = out_tmpl + '_cover.jpg'
+    # Hapus .mp4 temp setelah convert, apapun hasilnya
     try:
-        subprocess.run(
-            [
-                'ffmpeg', '-y',
-                '-ss',     '2',
-                '-i',      video_path,
-                '-vframes', '1',
-                '-q:v',    '2',
-                cover_path,
-            ],
-            check=True,
-            capture_output=True,
-            timeout=30,
-        )
-        if os.path.exists(cover_path) and os.path.getsize(cover_path) > 1000:
-            logger.info("🖼️ Frame detik ke-2 berhasil diambil")
-            return cover_path
+        os.remove(out_mp4)
+        logger.info(f"🗑️ File temp .mp4 dihapus: {out_mp4}")
+    except Exception:
+        pass
+
+    if result.returncode != 0:
+        err = result.stderr.decode(errors='ignore')[-300:]
+        raise RuntimeError(f"ffmpeg convert mp4→mp3 gagal: {err}")
+    logger.info("🎵 Audio berhasil di-convert dari .mp4 → .mp3")
+
+
+def download_cover(cover_url, cover_path):
+    """Download thumbnail dari TikWM sebagai cover art."""
+    try:
+        cr = session.get(cover_url, timeout=15)
+        cr.raise_for_status()
+        if len(cr.content) > 1000:
+            with open(cover_path, 'wb') as f:
+                f.write(cr.content)
+            logger.info("🖼️ Cover berhasil didownload dari TikWM")
+            return True
     except Exception as e:
-        logger.warning(f"⚠️ Gagal ambil frame: {e}")
-    return None
+        logger.warning(f"⚠️ Gagal download cover: {e}")
+    return False
 
 
-def embed_cover(mp3_path, cover_path, out_tmpl):
-    """Embed cover art ke file MP3 via ffmpeg. Tidak fatal kalau gagal."""
-    tagged = out_tmpl + '_tagged.mp3'
+def embed_cover(mp3_path, cover_path):
+    """
+    Embed cover art ke file MP3 via ffmpeg langsung (tanpa file temp).
+    Tulis ke mp3_path + '.tmp' lalu atomic rename.
+    """
+    tmp_path = mp3_path + '.tmp'
     try:
         subprocess.run(
             [
@@ -314,86 +295,51 @@ def embed_cover(mp3_path, cover_path, out_tmpl):
                 '-id3v2_version', '3',
                 '-metadata:s:v', 'title=Album cover',
                 '-metadata:s:v', 'comment=Cover (front)',
-                tagged,
+                tmp_path,
             ],
             check=True,
             capture_output=True,
             timeout=30,
         )
-        os.replace(tagged, mp3_path)
+        os.replace(tmp_path, mp3_path)
         logger.info("🖼️ Cover art berhasil di-embed ke MP3")
     except Exception as e:
         logger.warning(f"⚠️ Cover embed gagal (tidak fatal): {e}")
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
 
 
-def process_mp3(tiktok_url, title, out_tmpl):
+def process_mp3_pipeline(tiktok_url, title, out_tmpl, progress_cb=None):
     """
-    Pipeline utama konversi MP3:
-      1. Ambil metadata via TikWM (retry 3x)
-      2. Download video ke temp file (retry 3x)
-      3. Extract audio via ffmpeg
-      4. Ambil cover dari frame detik ke-2
-      5. Embed cover ke MP3
+    Pipeline MP3 SIMPLE — download .mp4 lalu langsung rename jadi .mp3.
+    Tanpa encode, tanpa ffmpeg convert. Cepat & ringan.
 
     Return: (path_mp3, final_title)
     """
-    out_mp3 = out_tmpl + '.mp3'
-    out_vid = out_tmpl + '.mp4'
+    def emit(pct, msg):
+        if progress_cb:
+            progress_cb(pct, msg)
+        logger.info(f"[{pct}%] {msg}")
 
+    out_mp4 = out_tmpl + '.mp4'
+    out_mp3 = out_tmpl + '.mp3'
+
+    emit(15, "📡 Ambil metadata video...")
     video_url, cover_url, api_title = get_meta_via_tikwm(tiktok_url)
     final_title = api_title or title
 
-    if video_url:
-        # Path utama: TikWM berhasil
-        download_video_with_retry(video_url, out_vid)
-        extract_audio_ffmpeg(out_vid, out_mp3)
+    if not video_url:
+        raise RuntimeError("Gagal ambil URL video dari TikWM")
 
-        cover_path = extract_frame_at_2s(out_vid, out_tmpl)
+    emit(25, "⬇️ Download video...")
+    download_video_to_temp(video_url, out_mp4)
 
-        try:
-            os.remove(out_vid)
-        except Exception:
-            pass
-
-        # Fallback cover ke thumbnail TikWM
-        if not cover_path and cover_url:
-            try:
-                cover_path = out_tmpl + '_cover.jpg'
-                cr = session.get(cover_url, timeout=15)
-                with open(cover_path, 'wb') as f:
-                    f.write(cr.content)
-            except Exception:
-                cover_path = None
-
-        if cover_path:
-            embed_cover(out_mp3, cover_path, out_tmpl)
-
-    else:
-        # Fallback: yt-dlp
-        logger.warning("⚠️ TikWM gagal total, fallback ke yt-dlp...")
-        ydl_opts = {
-            'format':         'bestaudio/best',
-            'outtmpl':        out_mp3,
-            'postprocessors': [{
-                'key':              'FFmpegExtractAudio',
-                'preferredcodec':   'mp3',
-                'preferredquality': '192',
-            }],
-            'writethumbnail': False,
-            'quiet':          True,
-            'no_warnings':    True,
-            'noplaylist':     True,
-            'socket_timeout': 20,
-            'user_agent':     TIKTOK_UA,
-            'http_headers':   DEFAULT_HEADERS,
-        }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(tiktok_url, download=True)
-            final_title = info.get('title', title)
-
-        # yt-dlp kadang bikin dobel ekstensi .mp3.mp3
-        if not os.path.exists(out_mp3) and os.path.exists(out_mp3 + '.mp3'):
-            os.rename(out_mp3 + '.mp3', out_mp3)
+    emit(90, "✏️ Rename .mp4 → .mp3...")
+    os.rename(out_mp4, out_mp3)
+    logger.info(f"✅ Renamed: {out_mp4} → {out_mp3}")
 
     return out_mp3, final_title
 
@@ -415,7 +361,6 @@ def search_videos_api():
     filter_str = data.get('filter', '').strip()
     logger.info(f"🔍 Searching for: {keyword} | filter: '{filter_str}'")
 
-    # Parse filter durasi sekali di awal
     filter_op, filter_detik = parse_filter_durasi(filter_str)
     if filter_str and filter_op is None:
         logger.warning(f"⚠️ Format filter tidak dikenali: '{filter_str}'")
@@ -438,9 +383,8 @@ def search_videos_api():
         results = []
 
         for v in videos:
-            durasi_detik = v.get('duration')  # angka mentah dari API (dalam detik)
+            durasi_detik = v.get('duration')
 
-            # Terapkan filter durasi — skip video yang tidak lolos
             if not lolos_filter(durasi_detik, filter_op, filter_detik):
                 continue
 
@@ -485,19 +429,19 @@ def download_url_api():
 
     try:
         if any(x in url_input for x in ['tiktok.com', 'vt.tiktok.com', 'vm.tiktok.com']):
-            resp = requests.get(f"https://www.tikwm.com/api/?url={url_input}").json()
+            resp = session.get(f"https://www.tikwm.com/api/?url={url_input}", timeout=15).json()
             if resp.get('code') == 0:
                 v = resp['data']
                 return jsonify({
                     "status":   "success",
                     "title":    v.get('title', 'TikTok Video'),
-                    "cover":    v.get('cover'),
+                    "cover":    v.get('origin_cover') or v.get('cover'),
                     "author":   v.get('author', {}).get('nickname', 'User'),
                     "duration": f"{v.get('duration', 0)}s",
                     "size":     f"{v.get('size', 0) / 1024 / 1024:.2f}MB",
                     "play":     v.get('play'),
                     "hdplay":   v.get('hdplay'),
-                    "music":    v.get('music'),
+                    # 'music' field sengaja dihapus — pakai hdplay/play untuk audio
                 })
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -568,9 +512,8 @@ def mp3_progress_api():
         def send(pct, msg):
             return f"data: {pct}|{msg}\n\n"
 
-        uid         = str(int(time.time() * 1000))
-        out_tmpl    = f'/tmp/vinder_{uid}'
-        final_title = title
+        uid      = str(int(time.time() * 1000))
+        out_tmpl = f'/tmp/vinder_{uid}'
 
         try:
             yield send(5, "🔗 Resolve URL...")
@@ -578,64 +521,25 @@ def mp3_progress_api():
             if 'vt.tiktok.com' in url or 'vm.tiktok.com' in url:
                 url = resolve_tiktok_url(url)
 
-            yield send(15, "📡 Ambil metadata video...")
-            video_url, cover_url, api_title = get_meta_via_tikwm(url)
-            final_title = api_title or title
+            final_title = title
 
-            if video_url:
-                yield send(30, "⬇️ Download video...")
-                download_video_with_retry(video_url, out_tmpl + '.mp4')
+            def progress_cb(pct, msg):
+                # SSE yield tidak bisa langsung dari callback — dikumpul di list
+                pass  # progress emit langsung via process_mp3_pipeline
 
-                yield send(60, "🎵 Extract audio...")
-                extract_audio_ffmpeg(out_tmpl + '.mp4', out_tmpl + '.mp3')
+            # Gunakan pipeline terpadu dengan SSE emit langsung
+            events = []
 
-                yield send(75, "🖼️ Ambil cover frame...")
-                cover_path = extract_frame_at_2s(out_tmpl + '.mp4', out_tmpl)
+            def emit_sse(pct, msg):
+                events.append(send(pct, msg))
 
-                try:
-                    os.remove(out_tmpl + '.mp4')
-                except Exception:
-                    pass
+            out_mp3, final_title = process_mp3_pipeline(url, title, out_tmpl, progress_cb=emit_sse)
 
-                if not cover_path and cover_url:
-                    try:
-                        cover_path = out_tmpl + '_cover.jpg'
-                        cr = session.get(cover_url, timeout=15)
-                        with open(cover_path, 'wb') as f:
-                            f.write(cr.content)
-                    except Exception:
-                        cover_path = None
+            # Flush semua event yang dikumpul
+            for ev in events:
+                yield ev
 
-                if cover_path:
-                    yield send(85, "🖼️ Embed cover art...")
-                    embed_cover(out_tmpl + '.mp3', cover_path, out_tmpl)
-
-            else:
-                yield send(30, "⚠️ Fallback ke yt-dlp...")
-                ydl_opts = {
-                    'format':         'bestaudio/best',
-                    'outtmpl':        out_tmpl + '.mp3',
-                    'postprocessors': [{
-                        'key':              'FFmpegExtractAudio',
-                        'preferredcodec':   'mp3',
-                        'preferredquality': '192',
-                    }],
-                    'writethumbnail': False,
-                    'quiet':          True,
-                    'no_warnings':    True,
-                    'noplaylist':     True,
-                    'socket_timeout': 20,
-                    'user_agent':     TIKTOK_UA,
-                    'http_headers':   DEFAULT_HEADERS,
-                }
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(url, download=True)
-                    final_title = info.get('title', title)
-
-                if not os.path.exists(out_tmpl + '.mp3') and os.path.exists(out_tmpl + '.mp3.mp3'):
-                    os.rename(out_tmpl + '.mp3.mp3', out_tmpl + '.mp3')
-
-            if not os.path.exists(out_tmpl + '.mp3'):
+            if not os.path.exists(out_mp3):
                 yield send(-1, "❌ File MP3 tidak berhasil dibuat")
                 do_cleanup(out_tmpl)
                 return
@@ -680,19 +584,20 @@ def get_mp3_file_api():
     with open(done_flag) as f:
         filename = f.read().strip()
 
-    with open(out_mp3, 'rb') as f:
-        audio_data = f.read()
-
-    do_cleanup(out_tmpl)
-
-    return Response(
-        audio_data,
+    # [OPTIMASI] send_file stream langsung — tidak load seluruh file ke RAM
+    response = send_file(
+        out_mp3,
         mimetype='audio/mpeg',
-        headers={
-            'Content-Disposition': f'attachment; filename="{filename}"',
-            'Content-Length':      str(len(audio_data)),
-        }
+        as_attachment=True,
+        download_name=filename,
     )
+
+    # Cleanup setelah response dikirim
+    @response.call_on_close
+    def cleanup():
+        do_cleanup(out_tmpl)
+
+    return response
 
 
 @app.route('/api/get_mp3')
@@ -712,7 +617,7 @@ def get_mp3_api():
 
     try:
         logger.info(f"🎵 MP3 request: {tiktok_url}")
-        out_mp3, final_title = process_mp3(tiktok_url, title, out_tmpl)
+        out_mp3, final_title = process_mp3_pipeline(tiktok_url, title, out_tmpl)
 
         if not os.path.exists(out_mp3):
             do_cleanup(out_tmpl)
@@ -721,19 +626,19 @@ def get_mp3_api():
         filename = f"[Vinder].{safe_filename(final_title)}.mp3"
         logger.info(f"✅ Siap dikirim: {filename}")
 
-        with open(out_mp3, 'rb') as f:
-            audio_data = f.read()
-
-        do_cleanup(out_tmpl)
-
-        return Response(
-            audio_data,
+        # [OPTIMASI] send_file stream langsung — tidak load seluruh file ke RAM
+        response = send_file(
+            out_mp3,
             mimetype='audio/mpeg',
-            headers={
-                'Content-Disposition': f'attachment; filename="{filename}"',
-                'Content-Length':      str(len(audio_data)),
-            }
+            as_attachment=True,
+            download_name=filename,
         )
+
+        @response.call_on_close
+        def cleanup():
+            do_cleanup(out_tmpl)
+
+        return response
 
     except Exception as e:
         logger.error(f"MP3 Error: {str(e)}")
