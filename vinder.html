@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta name="google-site-verification" content="GHstpy6snm1A3qBy0j__vRBFzDGW8xj7Ct5HfsCrtCw" />
+    <meta name="google-site-verification" content="GHstpy6snm1A3qBy0j__vRBFzDGW8xj7Ct5HfsCrtCw" />
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='Iconweb.png') }}">
 <link rel="apple-touch-icon" href="{{ url_for('static', filename='Iconweb.png') }}">
 <script type="application/ld+json">
@@ -19,6 +19,7 @@
 </script>
  <title>Vinder - Video / audio Downloader High Quality</title>
 <meta name="description" content="Vinder HYPE v1.3: Download video dan audio kualitas TINGGI tanpa batas. Cepat, gratis, dan tanpa iklan.">
+
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -753,6 +754,7 @@
       gap: 8px;
       margin-top: 4px;
     }
+   
     .btn-cancel {
       flex: 1;
       background: #1a1a1a;
@@ -784,7 +786,7 @@
     }
     .btn-send:hover { background: var(--accent-hover); box-shadow: 0 4px 16px var(--accent-glow); }
 
-        /* ===== DONATE MODAL ===== */
+    /* ===== DONATE MODAL ===== */
     .donate-modal-sheet {
       background: #141414;
       border: 1px solid #2a2010;
@@ -890,7 +892,7 @@
   <nav class="navbar">
     <div class="navbar-left">
       <span class="version-badge">v1.5</span>
-      <img src="iconTrans.png" style="width: 40px; height: 40px;">
+      <img src="20260424_191010.jpg" style="width: 40px; height: 40px;">
       <span class="navbar-brand">Vinder</span>
     </div>
     <div class="navbar-right">
@@ -986,8 +988,8 @@
     <div class="audio-card">
       <img src="new3.png" alt="Audio Downloader Preview">
       <div class="audio-card-content">
-        <div class="audio-card-title">NEW <span style="color:#2563eb;">Fitur</span> MP3 Format</div>
-        <div class="audio-card-desc">UPDATE terbaru : Fitur MP3 kini lebih, modern dan kencang. Rasakan pengalaman audio yang lebih efisien sekarang."</div>
+        <div class="audio-card-title">✅ <span style="color:#9333ea;">MP3</span> Downloader Aktif</div>
+        <div class="audio-card-desc">Pilih format MP3 lalu download — audio langsung tersimpan ke perangkat kamu.</div>
       </div>
     </div>
 
@@ -1046,7 +1048,7 @@
         <div class="donate-desc">Kalau Vinder bermanfaat buat lo,<br>traktir gw kopi biar semangat ngoding! 🔥</div>
       </div>
       <div class="donate-options">
-        <a class="donate-option" href="https://saweria.co/ZakdevComunity" target="_blank">
+        <a class="donate-option" href="https://saweria.co/zakdev" target="_blank">
           <div class="donate-opt-icon" style="background:#1a1208;">🧡</div>
           <div class="donate-opt-info">
             <div class="donate-opt-name">Saweria</div>
@@ -1174,7 +1176,6 @@
       const data = await resp.json();
       if (data.status === 'success') {
         currentPreviewData = data;
-        currentPreviewData.tiktok_url = url; // simpan URL asli TikTok untuk MP3 yt-dlp
         container.innerHTML = `
           <div class="preview-card">
             <img src="${data.cover}" class="preview-thumb">
@@ -1205,17 +1206,85 @@
     }
   }
 
-  /* ===== DOWNLOAD BUBBLE ===== */
-  function createBubble(title) {
+  /* ===== BACKGROUND MP3 SYSTEM ===== */
+  // Pakai /api/mp3_progress (SSE) + /api/get_mp3_file sesuai backend
+
+  function startMp3Background(url, title) {
+    const bubble = createBubble(title, true);
+
+    // SSE langsung ke /api/mp3_progress
+    const sseUrl = `/api/mp3_progress?url=${encodeURIComponent(url)}&title=${encodeURIComponent(title)}`;
+    const evtSource = new EventSource(sseUrl);
+
+    evtSource.onmessage = function(e) {
+      const raw   = e.data;
+      const idx   = raw.indexOf('|');
+      const pct   = parseInt(raw.slice(0, idx));
+      const rest  = raw.slice(idx + 1);
+
+      // Format selesai: "100|✅ DONE|{uid}|{filename}"
+      if (rest.startsWith('✅ DONE')) {
+        const parts    = rest.split('|');
+        const uid      = parts[1];
+        const filename = parts[2] || 'audio.mp3';
+        evtSource.close();
+        // Langsung auto-download tanpa perlu tap lagi
+        const a = document.createElement('a');
+        a.href = `/api/get_mp3_file?uid=${uid}`;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        bubble.setSuccess();
+
+        // Info: preview Google mungkin tampil sebagai video, tapi file tetap MP3 valid
+        setTimeout(() => {
+          const toast = document.createElement('div');
+          toast.style.cssText = `
+            position:fixed; bottom:90px; left:50%; transform:translateX(-50%);
+            background:#1a1a2e; border:1px solid #9333ea88; border-left:3px solid #9333ea;
+            color:#ccc; font-size:13px; line-height:1.6;
+            padding:12px 16px; border-radius:10px; max-width:320px; width:90%;
+            z-index:9999; box-shadow:0 4px 24px rgba(147,51,234,0.2);
+          `;
+          toast.innerHTML = `
+            <div style="font-weight:600;color:#a855f7;margin-bottom:4px;">ℹ️ Info File MP3</div>
+            <div>Preview Google mungkin tampil sebagai <b>video</b> — ini normal.<br>
+            File kamu <b>tetap MP3 yang valid</b> dan bisa diputar di semua music player.</div>
+          `;
+          document.body.appendChild(toast);
+        }, 300);
+
+        return;
+      }
+
+      // Error: pct = -1
+      if (pct < 0) {
+        evtSource.close();
+        bubble.setError(rest.replace('❌ ', '').replace('❌', ''));
+        return;
+      }
+
+      bubble.updateProgress(pct, rest);
+    };
+
+    evtSource.onerror = function() {
+      evtSource.close();
+      bubble.setError('Koneksi SSE terputus');
+    };
+  }
+
+  /* ===== DOWNLOAD BUBBLE (overwrite createBubble buat support MP3 bg) ===== */
+  function createBubble(title, isBg) {
     const wrap = document.getElementById('dl-container');
     const el = document.createElement('div');
     el.className = 'dl-bubble';
     const barId = 'bar-' + Date.now();
     el.innerHTML = `
-      <div class="dl-bubble-icon loading">⬇️</div>
+      <div class="dl-bubble-icon loading">${isBg ? '🎵' : '⬇️'}</div>
       <div class="dl-bubble-text">
         <div class="dl-bubble-label"></div>
-        <div class="dl-bubble-sub">Mengunduh: 0%</div>
+        <div class="dl-bubble-sub">${isBg ? 'Memproses MP3...' : 'Mengunduh: 0%'}</div>
         <div class="dl-progress"><div class="dl-progress-bar" id="${barId}"></div></div>
       </div>
       <button class="dl-close" onclick="closeBubble(this)">✕</button>
@@ -1225,14 +1294,17 @@
     const bar = el.querySelector('#' + barId);
     const sub = el.querySelector('.dl-bubble-sub');
     return {
-      updateProgress(p) { bar.style.width = p + '%'; sub.textContent = 'Mengunduh: ' + Math.round(p) + '%'; },
-      setMsg(msg) { sub.textContent = msg; },
+      updateProgress(p, msg) {
+        bar.style.width = p + '%';
+        sub.textContent = msg || ('Memproses: ' + Math.round(p) + '%');
+      },
       setSuccess() {
         el.querySelector('.dl-bubble-icon').textContent = '✅';
         el.querySelector('.dl-bubble-icon').className = 'dl-bubble-icon success';
-        sub.textContent = 'Selesai — Tersimpan!';
+        bar.style.width = '100%';
         bar.className = 'dl-progress-bar done';
-        setTimeout(() => fadeOutBubble(el), 5000);
+        sub.textContent = '✅ Selesai — File sedang diunduh!';
+        setTimeout(() => fadeOutBubble(el), 4000);
       },
       setError(msg) {
         el.querySelector('.dl-bubble-icon').textContent = '❌';
@@ -1250,105 +1322,27 @@
     setTimeout(() => el.remove(), 400);
   }
 
-  async function handleRealDownload(dUrl, title) {
-    const bubble = createBubble(title);
-    const ext = selectedFormat === 'mp3' ? '.mp3' : '.mp4';
-    const safeTitle = title.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 60) || 'vinder';
-    const filename = `[Vinder].${safeTitle}${ext}`;
-
-    if (selectedFormat === 'mp3') {
-      // MP3: pakai SSE untuk progress real-time dari backend
-      try {
-        const sseUrl = dUrl.replace('/api/get_mp3', '/api/mp3_progress');
-        const evtSrc = new EventSource(sseUrl);
-
-        await new Promise((resolve, reject) => {
-          evtSrc.onmessage = async (e) => {
-            const [pctStr, ...msgParts] = e.data.split('|');
-            const pct = parseInt(pctStr);
-            const msg = msgParts.join('|');
-
-            if (pct === -1) {
-              evtSrc.close();
-              reject(new Error(msg.replace('❌ Error: ', '')));
-              return;
-            }
-
-            // Update progress bar + label
-            bubble.updateProgress(pct);
-            bubble.setMsg(msg);
-
-            if (pct === 100) {
-              evtSrc.close();
-              // Parse uid dan filename dari pesan DONE
-              // format: "✅ DONE|uid|filename"
-              const parts = msg.split('|');
-              const uid      = parts[1];
-              const fileName = parts[2] || filename;
-
-              try {
-                bubble.setMsg('📦 Mengambil file...');
-                const fileResp = await fetch(`/api/get_mp3_file?uid=${uid}`);
-                if (!fileResp.ok) throw new Error(`Gagal ambil file: ${fileResp.status}`);
-                const blob = await fileResp.blob();
-
-                const objUrl = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = objUrl;
-                a.download = fileName;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                setTimeout(() => URL.revokeObjectURL(objUrl), 3000);
-                resolve();
-              } catch(fetchErr) {
-                reject(fetchErr);
-              }
-            }
-          };
-
-          evtSrc.onerror = (e) => {
-            evtSrc.close();
-            reject(new Error('Koneksi ke server terputus'));
-          };
-        });
-
-        bubble.setSuccess();
-      } catch (e) {
-        bubble.setError(e.message);
-      }
-    } else {
-      // MP4: langsung trigger download via <a> tag, stream langsung dari server
-      try {
-        const a = document.createElement('a');
-        a.href = dUrl;
-        a.target = '_blank';
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => { bubble.updateProgress(100); bubble.setSuccess(); }, 1500);
-      } catch (e) {
-        bubble.setError(e.message);
-      }
+  function handleRealDownload(dUrl, title) {
+    const bubble = createBubble(title, false);
+    try {
+      const a = document.createElement('a');
+      a.href = dUrl;
+      a.target = '_blank';
+      const ext = selectedFormat === 'mp3' ? '.mp3' : '.mp4';
+      a.download = title.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ext;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => { bubble.updateProgress(100); bubble.setSuccess(); }, 1500);
+    } catch (e) {
+      bubble.setError(e.message);
     }
   }
 
   function getDownloadUrl(v, resolution) {
-    const t = new Date().getTime();
-    if (selectedFormat === 'mp3') {
-      // MP3: yt-dlp butuh URL TikTok asli (bukan CDN)
-      // v.tiktok_url diisi dari doDownloadUrl (URL yang user paste)
-      // v.video_id diisi dari search results untuk reconstruct TikTok URL
-      const ttUrl = v.tiktok_url
-        || (v.video_id ? `https://www.tiktok.com/@${v.author_id || 'user'}/video/${v.video_id}` : '')
-        || v.hdplay || v.play || '';
-      if (!ttUrl) return '';
-      return `/api/get_mp3?url=${encodeURIComponent(ttUrl)}&title=${encodeURIComponent(v.title)}&nocache=${t}`;
-    }
-    // MP4: proxy stream biasa
     let vUrl = (resolution === 'HYPE v1.3') ? (v.hdplay || v.play) : (v.play || v.hdplay);
     if (!vUrl) return '';
+    const t = new Date().getTime();
     return `/api/get_video?url=${encodeURIComponent(vUrl)}&title=${encodeURIComponent(v.title)}&mode=${encodeURIComponent(resolution)}&format=${selectedFormat}&nocache=${t}`;
   }
 
@@ -1380,9 +1374,9 @@
       status.textContent = `${data.data.length} video ditemukan`;
       status.className = 'status-txt ok';
       data.data.forEach(v => {
-        const dUrl = getDownloadUrl(v, resolution);
         const div = document.createElement('div');
         div.className = 'video-item';
+        const isMp3 = selectedFormat === 'mp3';
         div.innerHTML = `
           <img src="${v.cover}" class="video-thumb">
           <div class="video-info">
@@ -1391,7 +1385,7 @@
               <span class="meta-tag">⏱ ${v.duration}</span>
               <span class="meta-tag">💾 ${v.size}</span>
             </div>
-            <button class="btn-dl" onclick="handleRealDownload('${dUrl.replace(/'/g, "\\'")}', '${v.title.replace(/'/g, "\\'")}')">
+            <button class="btn-dl" onclick="handleSearchDownload(this,'${encodeURIComponent(v.hdplay||v.play)}','${encodeURIComponent(v.title)}','${encodeURIComponent(v.play)}')">
               ⬇ Download ${selectedFormat.toUpperCase()}
             </button>
           </div>
@@ -1407,12 +1401,39 @@
     }
   }
 
+  function handleSearchDownload(btnEl, encHdplay, encTitle, encPlay) {
+    const title      = decodeURIComponent(encTitle);
+    const hdplay     = decodeURIComponent(encHdplay);
+    const play       = decodeURIComponent(encPlay);
+    const resolution = resSelected['Search'];
+
+    if (selectedFormat === 'mp3') {
+      // Pakai video URL (hdplay) sebagai sumber audio — BUKAN music field
+      startMp3Background(hdplay, title);
+    } else {
+      const t    = Date.now();
+      const vUrl = resolution === 'HYPE v1.3' ? hdplay : play;
+      const dUrl = `/api/get_video?url=${encodeURIComponent(vUrl)}&title=${encodeURIComponent(title)}&mode=${encodeURIComponent(resolution)}&nocache=${t}`;
+      handleRealDownload(dUrl, title);
+    }
+  }
+
   /* ===== DOWNLOAD URL ===== */
   async function doDownloadUrl() {
     const url = document.getElementById('dl-url').value.trim();
     if (!url) return;
     const resolution = resSelected['Url'];
 
+    // MP3 mode → background job langsung
+    if (selectedFormat === 'mp3') {
+      const title = (currentPreviewData && lastUrl === url)
+        ? currentPreviewData.title
+        : (url.split('/').pop() || 'audio');
+      startMp3Background(url, title);
+      return;
+    }
+
+    // MP4 mode — sama seperti sebelumnya
     if (currentPreviewData && lastUrl === url) {
       const dUrl = getDownloadUrl(currentPreviewData, resolution);
       handleRealDownload(dUrl, currentPreviewData.title);
@@ -1430,16 +1451,13 @@
       });
       const data = await resp.json();
       if (data.status === 'success') {
-        // Inject tiktok_url asli (yang user paste) ke data
-        // supaya getDownloadUrl bisa kirim ke /api/get_mp3 dengan URL yang bisa di-extract yt-dlp
-        data.tiktok_url = url;
         const dUrl = getDownloadUrl(data, resolution);
         handleRealDownload(dUrl, data.title);
       } else {
         throw new Error(data.msg);
       }
     } catch (e) {
-      const bubble = createBubble('URL Error');
+      const bubble = createBubble('URL Error', false);
       bubble.setError(e.message);
     } finally {
       btn.disabled = false;
@@ -1500,7 +1518,7 @@
     }
     const subject = encodeURIComponent(`[Vinder Feedback] dari ${name}`);
     const body = encodeURIComponent(`Dari: ${name}\n\nPesan:\n${message}\n\n---\nDikirim via Vinder v1.2`);
-    window.open(`mailto:zakdeveloper632@gmail.com?subject=${subject}&body=${body}`, '_blank');
+    window.open(`mailto:zakdev@gmail.com?subject=${subject}&body=${body}`, '_blank');
     closeFeedbackModal();
   }
 
