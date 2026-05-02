@@ -755,7 +755,7 @@
       margin-top: 4px;
     }
    
-    .btn-cancel {
+      .btn-cancel {
       flex: 1;
       background: #1a1a1a;
       border: 1px solid var(--border-bright);
@@ -976,7 +976,7 @@
       </div>
 
       <div class="input-wrapper">
-        <input id="dl-url" placeholder="https://vm.tiktok.com/..." type="text"/>
+        <input id="dl-url" placeholder="TikTok / YouTube / Instagram / Twitter URL..." type="text"/>
         <span class="clear-btn" id="clear-dl-url" onclick="clearInput('dl-url')">✕</span>
       </div>
       <div id="url-preview-container"></div>
@@ -1154,9 +1154,38 @@
   });
 
   /* ===== AUTO PREVIEW ===== */
+  // Platform yang didukung — harus sinkron dengan SUPPORTED_PLATFORMS di backend
+  const SUPPORTED_HOSTS = [
+    'tiktok.com', 'vt.tiktok.com', 'vm.tiktok.com',
+    'youtube.com', 'youtu.be',
+    'instagram.com', 'twitter.com', 'x.com',
+    'facebook.com', 'fb.watch',
+  ];
+
+  function isSupportedUrl(url) {
+    try {
+      const host = new URL(url).hostname.replace('www.', '');
+      return SUPPORTED_HOSTS.some(p => host === p || host.endsWith('.' + p));
+    } catch { return false; }
+  }
+
   async function autoPreview(url) {
     if (url === lastUrl) return;
-    if (!url.includes('tiktok.com') && !url.includes('http')) return;
+    // FIX: cek platform dulu sebelum hit API
+    // Bug lama: `!url.includes('tiktok.com') && !url.includes('http')` salah logika
+    // — Pinterest (https://pin.it/...) lolos karena ada 'http', lalu backend return HTML
+    if (!url.startsWith('http') || !isSupportedUrl(url)) {
+      document.getElementById('url-preview-container').style.display = 'none';
+      document.getElementById('btn-dlurl').disabled = false;
+      document.getElementById('btn-dlurl').textContent = 'Download Langsung';
+      if (url.startsWith('http') && !isSupportedUrl(url)) {
+        const statusEl = document.getElementById('url-status');
+        statusEl.textContent = '⚠️ Platform tidak didukung. Coba: TikTok, YouTube, Instagram, Twitter/X, Facebook.';
+        statusEl.className = 'status-txt err';
+      }
+      return;
+    }
+    document.getElementById('url-status').textContent = '';
     lastUrl = url;
 
     const container = document.getElementById('url-preview-container');
@@ -1228,14 +1257,17 @@
         const uid      = parts[1];
         const filename = parts[2] || 'audio.mp3';
         evtSource.close();
-        // Langsung auto-download tanpa perlu tap lagi
+        // FIX: setSuccess hanya setelah download benar-benar di-trigger
+        // Sebelumnya bubble bilang selesai sebelum file ter-download
+        bubble.updateProgress(98, '📥 Memulai unduhan...');
         const a = document.createElement('a');
         a.href = `/api/get_mp3_file?uid=${uid}`;
         a.download = filename;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        bubble.setSuccess();
+        // Delay singkat agar browser sempat handle download sebelum bubble selesai
+        setTimeout(() => bubble.setSuccess(), 800);
 
         // Info: preview Google mungkin tampil sebagai video, tapi file tetap MP3 valid
         setTimeout(() => {
