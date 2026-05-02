@@ -748,7 +748,7 @@
       font-size: 12px;
       color: var(--muted2);
     }
-      .upload-preview img { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; }
+       .upload-preview img { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; }
     .upload-preview span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .upload-preview button {
       width: auto;
@@ -1058,7 +1058,7 @@
         <div class="donate-desc">Kalau Vinder bermanfaat buat lo,<br>traktir gw kopi biar semangat ngoding! 🔥</div>
       </div>
       <div class="donate-options">
-        <a class="donate-option" href="https://saweria.co/zakdev" target="_blank">
+        <a class="donate-option" href="https://saweria.co/ZakdevComunity" target="_blank">
           <div class="donate-opt-icon" style="background:#1a1208;">🧡</div>
           <div class="donate-opt-info">
             <div class="donate-opt-name">Saweria</div>
@@ -1250,44 +1250,19 @@
 
   function startMp3Background(url, title) {
     const bubble = createBubble(title, true);
+    const filename = '[Vinder].' + title.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 60) + '.mp3';
+    const dlUrl = `/api/fast_mp3?url=${encodeURIComponent(url)}&title=${encodeURIComponent(title)}`;
 
-    const sseUrl = `/api/mp3_progress?url=${encodeURIComponent(url)}&title=${encodeURIComponent(title)}`;
-    const evtSource = new EventSource(sseUrl);
+    // Langsung trigger download — browser mulai terima byte pertama begitu server ready
+    const a = document.createElement('a');
+    a.href = dlUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
 
-    evtSource.onmessage = function(e) {
-      const raw  = e.data;
-      const idx  = raw.indexOf('|');
-      const pct  = parseInt(raw.slice(0, idx));
-      const rest = raw.slice(idx + 1);
-
-      if (rest.startsWith('✅ DONE')) {
-        const parts    = rest.split('|');
-        const uid      = parts[1];
-        const filename = parts[2] || 'audio.mp3';
-        evtSource.close();
-        // Langsung download — no delay
-        const a = document.createElement('a');
-        a.href = `/api/get_mp3_file?uid=${uid}`;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        bubble.setSuccess();
-        return;
-      }
-
-      if (pct < 0) {
-        evtSource.close();
-        bubble.setError(rest.replace('❌ ', '').replace('❌', ''));
-        return;
-      }
-      // Semua progress SSE diabaikan — bar & teks sudah fixed (turbo mode)
-    };
-
-    evtSource.onerror = function() {
-      evtSource.close();
-      bubble.setError('Koneksi terputus');
-    };
+    // Bubble success setelah browser konfirmasi download dimulai (~1.5s cukup)
+    setTimeout(() => bubble.setSuccess(), 1500);
   }
 
   /* ===== DOWNLOAD BUBBLE (overwrite createBubble buat support MP3 bg) ===== */
@@ -1308,7 +1283,7 @@
       </div>
       <button class="dl-close" onclick="closeBubble(this)">✕</button>
     `;
-    el.querySelector('.dl-bubble-label').textContent = title;
+   el.querySelector('.dl-bubble-label').textContent = title;
     wrap.appendChild(el);
     const bar = el.querySelector('#' + barId);
     const sub = el.querySelector('.dl-bubble-sub');
