@@ -148,12 +148,8 @@ def fetch_video_stream(url, fallback_url=None):
         content_type   = r.headers.get('Content-Type', '').lower()
         content_length = int(r.headers.get('Content-Length', 0))
 
-        if (content_length > 0
-                and content_length < 500_000
-                and ('text/html' in content_type or 'text/plain' in content_type)):
-            logger.warning(f"⚠️ File korup/kecil ({content_length} bytes)")
-            return None, False
-
+        # FIX: blokir HTML/JSON tanpa andal Content-Length
+        # CDN publik sering tidak kirim Content-Length, cek content-type saja
         if 'text/html' in content_type or 'application/json' in content_type:
             logger.warning(f"⚠️ Blokir non-video content: {content_type}")
             if fallback_url:
@@ -334,12 +330,20 @@ def process_mp3_pipeline(tiktok_url, title, out_tmpl, progress_cb=None):
     if not video_url:
         raise RuntimeError("Gagal ambil URL video dari TikWM")
 
-    emit(25, "⬇️ Download video...")
+    emit(30, "⬇️ Download video...")
     download_video_to_temp(video_url, out_mp4)
 
-    emit(90, "✏️ Rename .mp4 → .mp3...")
-    os.rename(out_mp4, out_mp3)
-    logger.info(f"✅ Renamed: {out_mp4} → {out_mp3}")
+    # FIX: konversi ffmpeg beneran, bukan sekadar rename
+    # Rename menghasilkan file MP4 berekstensi .mp3 — tidak valid di music player
+    emit(70, "🎵 Convert ke MP3...")
+    convert_mp4_to_mp3(out_mp4, out_mp3)
+
+    # Embed cover art kalau ada
+    if cover_url:
+        cover_path = out_tmpl + '_cover.jpg'
+        emit(88, "🖼️ Embed cover art...")
+        if download_cover(cover_url, cover_path):
+            embed_cover(out_mp3, cover_path)
 
     return out_mp3, final_title
 
@@ -412,11 +416,35 @@ def search_videos_api():
         return jsonify({"status": "error", "msg": str(e)})
 
 
+# Platform yang didukung — FIX agar URL asing tidak nyasar ke static files
+SUPPORTED_PLATFORMS = [
+    'tiktok.com', 'vt.tiktok.com', 'vm.tiktok.com',
+    'youtube.com', 'youtu.be',
+    'instagram.com', 'twitter.com', 'x.com',
+    'facebook.com', 'fb.watch',
+]
+
+def is_supported_url(url):
+    if not url:
+        return False
+    return any(p in url for p in SUPPORTED_PLATFORMS)
+
+
 @app.route('/api/download_url', methods=['POST'])
 def download_url_api():
     data      = request.json
-    url_input = data.get('url')
+    url_input = data.get('url', '').strip()
     logger.info(f"🔗 Processing: {url_input}")
+
+    # FIX: tolak URL platform yang tidak didukung (Pinterest, dll)
+    # Sebelumnya Pinterest URL lolos ke yt_dlp dan sering menyebabkan
+    # Flask fallback serve vinder.html sebagai file download
+    if not is_supported_url(url_input):
+        logger.warning(f"⚠️ Platform tidak didukung: {url_input}")
+        return jsonify({
+            "status": "error",
+            "msg":    "Platform tidak didukung. Vinder mendukung: TikTok, YouTube, Instagram, Twitter/X, Facebook."
+        })
 
     ydl_opts = {
         'format':       'bestvideo+bestaudio/best',
@@ -515,47 +543,56 @@ def mp3_progress_api():
         uid      = str(int(time.time() * 1000))
         out_tmpl = f'/tmp/vinder_{uid}'
 
-        try:
-            yield send(5, "🔗 Resolve URL...")
-            url = tiktok_url
-            if 'vt.tiktok.com' in url or 'vm.tiktok.com' in url:
-                url = resolve_tiktok_url(url)
+        # FIX: gunakan queue + thread agar SSE bisa yield progress real-time
+        # Sebelumnya events dikumpul di list, baru di-yield setelah pipeline selesai
+        # — menyebabkan bubble lompat langsung 0% → 100% tanpa animasi bertahap
+        import queue, threading
 
-            final_title = title
+        q = queue.Queue()
 
-            def progress_cb(pct, msg):
-                # SSE yield tidak bisa langsung dari callback — dikumpul di list
-                pass  # progress emit langsung via process_mp3_pipeline
+        def emit_sse(pct, msg):
+            q.put(send(pct, msg))
 
-            # Gunakan pipeline terpadu dengan SSE emit langsung
-            events = []
+        def run_pipeline():
+            try:
+                emit_sse(5, "🔗 Resolve URL...")
+                url = tiktok_url
+                if 'vt.tiktok.com' in url or 'vm.tiktok.com' in url:
+                    url = resolve_tiktok_url(url)
 
-            def emit_sse(pct, msg):
-                events.append(send(pct, msg))
+                out_mp3, final_title = process_mp3_pipeline(url, title, out_tmpl, progress_cb=emit_sse)
 
-            out_mp3, final_title = process_mp3_pipeline(url, title, out_tmpl, progress_cb=emit_sse)
+                if not os.path.exists(out_mp3):
+                    q.put(send(-1, "❌ File MP3 tidak berhasil dibuat"))
+                    do_cleanup(out_tmpl)
+                    q.put(None)
+                    return
 
-            # Flush semua event yang dikumpul
-            for ev in events:
-                yield ev
+                fname = f"[Vinder].{safe_filename(final_title)}.mp3"
+                emit_sse(95, "📦 Siapkan file...")
+                with open(out_tmpl + '.ready', 'w') as f:
+                    f.write(fname)
 
-            if not os.path.exists(out_mp3):
-                yield send(-1, "❌ File MP3 tidak berhasil dibuat")
+                q.put(send(100, f"✅ DONE|{uid}|{fname}"))
+            except Exception as e:
+                logger.error(f"SSE MP3 Error: {e}")
                 do_cleanup(out_tmpl)
-                return
+                q.put(send(-1, f"❌ Error: {str(e)[:100]}"))
+            finally:
+                q.put(None)  # sentinel = selesai
 
-            filename = f"[Vinder].{safe_filename(final_title)}.mp3"
+        t = threading.Thread(target=run_pipeline, daemon=True)
+        t.start()
 
-            yield send(95, "📦 Siapkan file...")
-            with open(out_tmpl + '.ready', 'w') as f:
-                f.write(filename)
-
-            yield send(100, f"✅ DONE|{uid}|{filename}")
-
-        except Exception as e:
-            logger.error(f"SSE MP3 Error: {e}")
-            do_cleanup(out_tmpl)
-            yield send(-1, f"❌ Error: {str(e)[:100]}")
+        while True:
+            try:
+                item = q.get(timeout=120)
+            except queue.Empty:
+                yield send(-1, "❌ Timeout: proses terlalu lama")
+                break
+            if item is None:
+                break
+            yield item
 
     return Response(
         stream_with_context(generate()),
