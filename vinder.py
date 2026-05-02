@@ -125,6 +125,19 @@ def safe_filename(title, max_len=60):
     return cleaned[:max_len] or 'vinder'
 
 
+def make_content_disposition(filename):
+    """
+    Buat header Content-Disposition yang aman untuk filename berisi
+    emoji / unicode / karakter non-ASCII (RFC 5987).
+    Browser modern baca filename* (UTF-8 encoded), browser lama baca
+    filename fallback (ASCII-only).
+    """
+    from urllib.parse import quote
+    ascii_fallback = filename.encode('ascii', errors='replace').decode('ascii').replace('?', '_')
+    utf8_encoded = quote(filename, safe=" !()\'~")
+    return f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{utf8_encoded}"
+
+
 def do_cleanup(out_tmpl):
     """Hapus semua file temp yang terkait satu sesi download."""
     suffixes = ['.mp3', '.mp3.raw', '_cover.jpg', '.ready']
@@ -642,7 +655,7 @@ def get_video_api():
             stream_with_context(r.iter_content(chunk_size=1024 * 1024)),
             headers={
                 'Content-Type':        content_type,
-                'Content-Disposition': f'attachment; filename="{fname}"',
+                'Content-Disposition': make_content_disposition(fname),
                 'Cache-Control':       'no-cache',
             }
         )
@@ -751,20 +764,24 @@ def get_mp3_file_api():
     with open(done_flag) as f:
         filename = f.read().strip()
 
-    # [OPTIMASI] send_file stream langsung - tidak load seluruh file ke RAM
-    response = send_file(
-        out_mp3,
-        mimetype='audio/mpeg',
-        as_attachment=True,
-        download_name=filename,
-    )
-
-    # Cleanup setelah response dikirim
-    @response.call_on_close
-    def cleanup():
+    # Kirim file dengan Content-Disposition RFC 5987 (aman untuk emoji/unicode)
+    def generate_mp3_file():
+        with open(out_mp3, 'rb') as audio_f:
+            while True:
+                chunk = audio_f.read(512 * 1024)
+                if not chunk:
+                    break
+                yield chunk
         do_cleanup(out_tmpl)
 
-    return response
+    return Response(
+        stream_with_context(generate_mp3_file()),
+        headers={
+            'Content-Type':        'audio/mpeg',
+            'Content-Disposition': make_content_disposition(filename),
+            'Cache-Control':       'no-cache',
+        }
+    )
 
 
 @app.route('/api/get_mp3')
@@ -793,19 +810,24 @@ def get_mp3_api():
         filename = f"[Vinder].{safe_filename(final_title)}.mp3"
         logger.info(f"[OK] Siap dikirim: {filename}")
 
-        # [OPTIMASI] send_file stream langsung - tidak load seluruh file ke RAM
-        response = send_file(
-            out_mp3,
-            mimetype='audio/mpeg',
-            as_attachment=True,
-            download_name=filename,
-        )
-
-        @response.call_on_close
-        def cleanup():
+        # Kirim file dengan Content-Disposition RFC 5987 (aman untuk emoji/unicode)
+        def generate_mp3():
+            with open(out_mp3, 'rb') as audio_f:
+                while True:
+                    chunk = audio_f.read(512 * 1024)
+                    if not chunk:
+                        break
+                    yield chunk
             do_cleanup(out_tmpl)
 
-        return response
+        return Response(
+            stream_with_context(generate_mp3()),
+            headers={
+                'Content-Type':        'audio/mpeg',
+                'Content-Disposition': make_content_disposition(filename),
+                'Cache-Control':       'no-cache',
+            }
+        )
 
     except Exception as e:
         logger.error(f"MP3 Error: {str(e)}")
@@ -887,7 +909,7 @@ def fast_mp3_api():
             stream_with_context(generate()),
             headers={
                 'Content-Type':        'audio/mpeg',
-                'Content-Disposition': f'attachment; filename="{filename}"',
+                'Content-Disposition': make_content_disposition(filename),
                 'Cache-Control':       'no-cache',
             }
         )
