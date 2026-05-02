@@ -108,8 +108,21 @@ def resolve_tiktok_url(url):
 
 
 def safe_filename(title, max_len=60):
-    """Bersihkan judul jadi nama file yang aman."""
-    return re.sub(r'[^a-zA-Z0-9]', '_', title)[:max_len] or 'vinder'
+    """
+    Bersihkan judul jadi nama file yang aman.
+    - Hapus karakter berbahaya OS: \\ / : * ? " < > |
+    - Hapus token yang diawali # (hashtag) atau @ (mention)
+    - Pertahankan emoji, unicode, font aneh, simbol umum, spasi
+    """
+    # Hapus karakter berbahaya untuk nama file (OS-level)
+    cleaned = re.sub(r'[\\/:*?"<>|]', '', title)
+    # Hapus karakter kontrol
+    cleaned = re.sub(r'[\x00-\x1f\x7f]', '', cleaned)
+    # Hapus token hashtag (#kata) dan mention (@kata)
+    cleaned = re.sub(r'[#@]\S*', '', cleaned)
+    # Bersihkan spasi berlebih
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    return cleaned[:max_len] or 'vinder'
 
 
 def do_cleanup(out_tmpl):
