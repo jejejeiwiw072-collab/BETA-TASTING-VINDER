@@ -563,8 +563,18 @@
       width: 0%;
       transition: width 0.1s linear;
     }
-    .dl-progress-bar.done { width: 100%; background: #4ade80; }
+    .dl-progress-bar.done { width: 100%; background: #4ade80; transition: width 0.15s ease; }
     .dl-progress-bar.fail { width: 100%; background: var(--error); }
+    .dl-progress-bar.turbo-loading {
+      width: 100%;
+      background: linear-gradient(90deg, #9333ea, #2563eb, #9333ea);
+      background-size: 200% 100%;
+      animation: turbo-sweep 1.2s ease-in-out infinite;
+    }
+    @keyframes turbo-sweep {
+      0%   { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
     .dl-close {
       background: none;
       border: none;
@@ -738,7 +748,7 @@
       font-size: 12px;
       color: var(--muted2);
     }
-    .upload-preview img { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; }
+      .upload-preview img { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; }
     .upload-preview span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .upload-preview button {
       width: auto;
@@ -755,7 +765,7 @@
       margin-top: 4px;
     }
    
-      .btn-cancel {
+    .btn-cancel {
       flex: 1;
       background: #1a1a1a;
       border: 1px solid var(--border-bright);
@@ -1241,68 +1251,42 @@
   function startMp3Background(url, title) {
     const bubble = createBubble(title, true);
 
-    // SSE langsung ke /api/mp3_progress
     const sseUrl = `/api/mp3_progress?url=${encodeURIComponent(url)}&title=${encodeURIComponent(title)}`;
     const evtSource = new EventSource(sseUrl);
 
     evtSource.onmessage = function(e) {
-      const raw   = e.data;
-      const idx   = raw.indexOf('|');
-      const pct   = parseInt(raw.slice(0, idx));
-      const rest  = raw.slice(idx + 1);
+      const raw  = e.data;
+      const idx  = raw.indexOf('|');
+      const pct  = parseInt(raw.slice(0, idx));
+      const rest = raw.slice(idx + 1);
 
-      // Format selesai: "100|✅ DONE|{uid}|{filename}"
       if (rest.startsWith('✅ DONE')) {
         const parts    = rest.split('|');
         const uid      = parts[1];
         const filename = parts[2] || 'audio.mp3';
         evtSource.close();
-        // FIX: setSuccess hanya setelah download benar-benar di-trigger
-        // Sebelumnya bubble bilang selesai sebelum file ter-download
-        bubble.updateProgress(98, '📥 Memulai unduhan...');
+        // Langsung download — no delay
         const a = document.createElement('a');
         a.href = `/api/get_mp3_file?uid=${uid}`;
         a.download = filename;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        // Delay singkat agar browser sempat handle download sebelum bubble selesai
-        setTimeout(() => bubble.setSuccess(), 800);
-
-        // Info: preview Google mungkin tampil sebagai video, tapi file tetap MP3 valid
-        setTimeout(() => {
-          const toast = document.createElement('div');
-          toast.style.cssText = `
-            position:fixed; bottom:90px; left:50%; transform:translateX(-50%);
-            background:#1a1a2e; border:1px solid #9333ea88; border-left:3px solid #9333ea;
-            color:#ccc; font-size:13px; line-height:1.6;
-            padding:12px 16px; border-radius:10px; max-width:320px; width:90%;
-            z-index:9999; box-shadow:0 4px 24px rgba(147,51,234,0.2);
-          `;
-          toast.innerHTML = `
-            <div style="font-weight:600;color:#a855f7;margin-bottom:4px;">ℹ️ Info File MP3</div>
-            <div>Preview Google mungkin tampil sebagai <b>video</b> — ini normal.<br>
-            File kamu <b>tetap MP3 yang valid</b> dan bisa diputar di semua music player.</div>
-          `;
-          document.body.appendChild(toast);
-        }, 300);
-
+        bubble.setSuccess();
         return;
       }
 
-      // Error: pct = -1
       if (pct < 0) {
         evtSource.close();
         bubble.setError(rest.replace('❌ ', '').replace('❌', ''));
         return;
       }
-
-      bubble.updateProgress(pct, rest);
+      // Semua progress SSE diabaikan — bar & teks sudah fixed (turbo mode)
     };
 
     evtSource.onerror = function() {
       evtSource.close();
-      bubble.setError('Koneksi SSE terputus');
+      bubble.setError('Koneksi terputus');
     };
   }
 
@@ -1312,12 +1296,15 @@
     const el = document.createElement('div');
     el.className = 'dl-bubble';
     const barId = 'bar-' + Date.now();
+    // MP3 mode: teks fixed "Turbo analisis link...", bar animasi sweep
+    const subText = isBg ? '⚡ Turbo analisis link...' : 'Mengunduh: 0%';
+    const barClass = isBg ? 'dl-progress-bar turbo-loading' : 'dl-progress-bar';
     el.innerHTML = `
       <div class="dl-bubble-icon loading">${isBg ? '🎵' : '⬇️'}</div>
       <div class="dl-bubble-text">
         <div class="dl-bubble-label"></div>
-        <div class="dl-bubble-sub">${isBg ? 'Memproses MP3...' : 'Mengunduh: 0%'}</div>
-        <div class="dl-progress"><div class="dl-progress-bar" id="${barId}"></div></div>
+        <div class="dl-bubble-sub">${subText}</div>
+        <div class="dl-progress"><div class="${barClass}" id="${barId}"></div></div>
       </div>
       <button class="dl-close" onclick="closeBubble(this)">✕</button>
     `;
@@ -1327,13 +1314,15 @@
     const sub = el.querySelector('.dl-bubble-sub');
     return {
       updateProgress(p, msg) {
-        bar.style.width = p + '%';
-        sub.textContent = msg || ('Memproses: ' + Math.round(p) + '%');
+        // Hanya aktif untuk non-MP3 (isBg=false)
+        if (!isBg) {
+          bar.style.width = p + '%';
+          sub.textContent = msg || ('Mengunduh: ' + Math.round(p) + '%');
+        }
       },
       setSuccess() {
         el.querySelector('.dl-bubble-icon').textContent = '✅';
         el.querySelector('.dl-bubble-icon').className = 'dl-bubble-icon success';
-        bar.style.width = '100%';
         bar.className = 'dl-progress-bar done';
         sub.textContent = '✅ Selesai — File sedang diunduh!';
         setTimeout(() => fadeOutBubble(el), 4000);
