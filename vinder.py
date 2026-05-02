@@ -197,10 +197,11 @@ def fetch_video_stream(url, fallback_url=None):
         raise
 
 
-def get_meta_via_tikwm(tiktok_url, retries=3):
+def get_meta_via_tikwm(tiktok_url, retries=3, for_audio=False):
     """
     Ambil metadata video dari TikWM API dengan retry otomatis.
-    Return: (video_url, cover_url, title) - pakai hdplay/play, BUKAN music field.
+    for_audio=True  -> pakai play (SD/360p) - audio track sama, video lebih ringan
+    for_audio=False -> pakai hdplay (HD) - untuk download video
     """
     for attempt in range(1, retries + 1):
         try:
@@ -212,10 +213,17 @@ def get_meta_via_tikwm(tiktok_url, retries=3):
 
             if data.get('code') == 0:
                 v         = data['data']
-                video_url = v.get('hdplay') or v.get('play')
+                if for_audio:
+                    # Untuk MP3: pakai wmplay (watermark/SD) atau play (SD)
+                    # Audio track-nya identik dengan hdplay, tapi video jauh lebih kecil
+                    # ffmpeg akan buang video track langsung, jadi resolusi tidak relevan
+                    video_url = v.get('wmplay') or v.get('play')
+                    logger.info(f"[OK] TikWM OK - pakai SD URL untuk audio (attempt {attempt})")
+                else:
+                    video_url = v.get('hdplay') or v.get('play')
+                    logger.info(f"[OK] TikWM OK - pakai HD URL untuk video (attempt {attempt})")
                 cover_url = v.get('origin_cover') or v.get('cover')
                 title     = v.get('title', 'audio')
-                logger.info(f"[OK] TikWM OK (attempt {attempt})")
                 return video_url, cover_url, title
             else:
                 logger.warning(f"[WARN] TikWM code != 0 (attempt {attempt}): {data.get('msg')}")
@@ -229,54 +237,94 @@ def get_meta_via_tikwm(tiktok_url, retries=3):
     return None, None, None
 
 
+def detect_audio_bitrate(url, headers):
+    """
+    Detect bitrate audio asli dari URL via ffprobe.
+    Return bitrate dalam format string e.g. '128k', '96k'.
+    Fallback ke '128k' kalau gagal detect.
+    """
+    try:
+        probe = subprocess.run(
+            [
+                'ffprobe', '-v', 'quiet',
+                '-print_format', 'json',
+                '-show_streams',
+                '-select_streams', 'a:0',
+                url,
+            ],
+            capture_output=True, timeout=15,
+            env={**__import__('os').environ, 'FFPROBE_USER_AGENT': headers.get('User-Agent', '')},
+        )
+        import json
+        data = json.loads(probe.stdout.decode())
+        streams = data.get('streams', [])
+        if streams:
+            br = streams[0].get('bit_rate')
+            if br:
+                kbps = int(br) // 1000
+                # Bulatkan ke nilai standar MP3: 64, 96, 128, 160, 192
+                for std in [64, 96, 128, 160, 192]:
+                    if kbps <= std:
+                        logger.info(f"[PROBE] Bitrate asli: {kbps}k -> pakai {std}k")
+                        return f"{std}k"
+                return "192k"
+    except Exception as e:
+        logger.warning(f"[WARN] ffprobe gagal: {e} -> fallback 128k")
+    return "128k"
+
+
 def download_audio_direct(audio_url, out_mp3):
     """
-    Download audio stream langsung dari URL CDN ke file .mp3.
-    Tidak perlu download video dulu - langsung ambil audio asli dari server.
-    Cocok untuk audio stream TikTok (m4a/aac) yang di-serve CDN.
+    Pipe audio/video URL langsung ke ffmpeg tanpa buffer ke disk.
+    Bitrate MP3 output mengikuti bitrate audio asli dari source.
     """
     headers = TIKTOK_HEADERS.copy()
     headers["Range"] = "bytes=0-"
 
-    logger.info(f"[DL] Download audio langsung: {audio_url[:80]}...")
+    logger.info(f"[DL] Pipe audio ke ffmpeg: {audio_url[:80]}...")
+
+    # Detect bitrate asli dulu sebelum download
+    bitrate = detect_audio_bitrate(audio_url, headers)
+
     r = session.get(audio_url, stream=True, timeout=60, headers=headers, allow_redirects=True)
     r.raise_for_status()
 
     content_type = r.headers.get('Content-Type', '').lower()
-    logger.info(f"[PKG] Content-Type audio: {content_type}")
+    logger.info(f"[PKG] Content-Type: {content_type} | Target bitrate: {bitrate}")
 
-    # Tulis raw audio ke file sementara
-    raw_path = out_mp3 + '.raw'
-    with open(raw_path, 'wb') as f:
-        for chunk in r.iter_content(chunk_size=512 * 1024):
-            if chunk:
-                f.write(chunk)
-
-    size_mb = os.path.getsize(raw_path) / 1024 / 1024
-    logger.info(f"[OK] Audio raw berhasil didownload ({size_mb:.2f} MB)")
-
-    # Re-encode ke MP3 192k via ffmpeg (input = raw audio, bukan video)
+    # Pipe stream langsung ke ffmpeg via stdin - tanpa temp file
     cmd = [
         'ffmpeg', '-y',
-        '-i', raw_path,
-        '-vn',                   # buang video track kalau ada
+        '-i', 'pipe:0',          # baca dari stdin
+        '-vn',                   # buang video track
         '-acodec', 'libmp3lame',
-        '-ab', '192k',
+        '-ab', bitrate,          # ikuti bitrate asli source
         '-ar', '44100',
         out_mp3,
     ]
-    result = subprocess.run(cmd, capture_output=True, timeout=120)
+    proc = subprocess.Popen(
+        cmd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    )
 
     try:
-        os.remove(raw_path)
-    except Exception:
+        for chunk in r.iter_content(chunk_size=512 * 1024):
+            if chunk:
+                proc.stdin.write(chunk)
+        proc.stdin.close()
+    except BrokenPipeError:
         pass
 
-    if result.returncode != 0:
-        err = result.stderr.decode(errors='ignore')[-300:]
-        raise RuntimeError(f"ffmpeg audio->mp3 gagal: {err}")
+    proc.wait(timeout=120)
 
-    logger.info("[MP3] Audio langsung berhasil di-encode ke .mp3")
+    if proc.returncode != 0:
+        err = proc.stderr.read().decode(errors='ignore')[-300:]
+        raise RuntimeError(f"ffmpeg pipe->mp3 gagal: {err}")
+
+    size_mb = os.path.getsize(out_mp3) / 1024 / 1024
+    logger.info(f"[MP3] Encode selesai: {size_mb:.2f} MB ({bitrate})")
 
 
 def download_audio_ytdlp(url, out_mp3):
@@ -296,7 +344,7 @@ def download_audio_ytdlp(url, out_mp3):
         'postprocessors': [{
             'key':            'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
-            'preferredquality': '192',
+            'preferredquality': '0',    # 0 = ikuti bitrate asli source
         }],
         # Pastikan output final adalah file .mp3
         'keepvideo': False,
@@ -452,8 +500,9 @@ def process_mp3_pipeline(url, title, out_tmpl, progress_cb=None):
             download_audio_direct(audio_url, out_mp3)
         else:
             # Terakhir: fallback ke TikWM video URL + extract audio
+            # for_audio=True -> ambil play/SD bukan hdplay, audio track identik tapi stream lebih ringan
             emit(20, "[API] Fallback: ambil URL dari TikWM...")
-            video_url, cover_url2, tikwm_title = get_meta_via_tikwm(url)
+            video_url, cover_url2, tikwm_title = get_meta_via_tikwm(url, for_audio=True)
             if not cover_url:
                 cover_url = cover_url2
             if not final_title or final_title == 'audio':
