@@ -100,10 +100,10 @@ def resolve_tiktok_url(url):
     """Resolve short URL (vt.tiktok.com / vm.tiktok.com) ke URL panjang."""
     try:
         r = session.head(url, allow_redirects=True, timeout=10)
-        logger.info(f"🔗 Resolved: {url} → {r.url}")
+        logger.info(f"[URL] Resolved: {url} -> {r.url}")
         return r.url
     except Exception as e:
-        logger.warning(f"⚠️ Gagal resolve URL: {e}")
+        logger.warning(f"[WARN] Gagal resolve URL: {e}")
         return url
 
 
@@ -151,7 +151,7 @@ def fetch_video_stream(url, fallback_url=None):
         # FIX: blokir HTML/JSON tanpa andal Content-Length
         # CDN publik sering tidak kirim Content-Length, cek content-type saja
         if 'text/html' in content_type or 'application/json' in content_type:
-            logger.warning(f"⚠️ Blokir non-video content: {content_type}")
+            logger.warning(f"[WARN] Blokir non-video content: {content_type}")
             if fallback_url:
                 return session.get(
                     fallback_url, stream=True, timeout=30,
@@ -174,7 +174,7 @@ def fetch_video_stream(url, fallback_url=None):
 def get_meta_via_tikwm(tiktok_url, retries=3):
     """
     Ambil metadata video dari TikWM API dengan retry otomatis.
-    Return: (video_url, cover_url, title) — pakai hdplay/play, BUKAN music field.
+    Return: (video_url, cover_url, title) - pakai hdplay/play, BUKAN music field.
     """
     for attempt in range(1, retries + 1):
         try:
@@ -189,13 +189,13 @@ def get_meta_via_tikwm(tiktok_url, retries=3):
                 video_url = v.get('hdplay') or v.get('play')
                 cover_url = v.get('origin_cover') or v.get('cover')
                 title     = v.get('title', 'audio')
-                logger.info(f"✅ TikWM OK (attempt {attempt})")
+                logger.info(f"[OK] TikWM OK (attempt {attempt})")
                 return video_url, cover_url, title
             else:
-                logger.warning(f"⚠️ TikWM code != 0 (attempt {attempt}): {data.get('msg')}")
+                logger.warning(f"[WARN] TikWM code != 0 (attempt {attempt}): {data.get('msg')}")
 
         except Exception as e:
-            logger.warning(f"⚠️ TikWM gagal attempt {attempt}: {e}")
+            logger.warning(f"[WARN] TikWM gagal attempt {attempt}: {e}")
 
         if attempt < retries:
             time.sleep(1.5 * attempt)
@@ -206,18 +206,18 @@ def get_meta_via_tikwm(tiktok_url, retries=3):
 def download_audio_direct(audio_url, out_mp3):
     """
     Download audio stream langsung dari URL CDN ke file .mp3.
-    Tidak perlu download video dulu — langsung ambil audio asli dari server.
+    Tidak perlu download video dulu - langsung ambil audio asli dari server.
     Cocok untuk audio stream TikTok (m4a/aac) yang di-serve CDN.
     """
     headers = TIKTOK_HEADERS.copy()
     headers["Range"] = "bytes=0-"
 
-    logger.info(f"⬇️ Download audio langsung: {audio_url[:80]}...")
+    logger.info(f"[DL] Download audio langsung: {audio_url[:80]}...")
     r = session.get(audio_url, stream=True, timeout=60, headers=headers, allow_redirects=True)
     r.raise_for_status()
 
     content_type = r.headers.get('Content-Type', '').lower()
-    logger.info(f"📦 Content-Type audio: {content_type}")
+    logger.info(f"[PKG] Content-Type audio: {content_type}")
 
     # Tulis raw audio ke file sementara
     raw_path = out_mp3 + '.raw'
@@ -227,7 +227,7 @@ def download_audio_direct(audio_url, out_mp3):
                 f.write(chunk)
 
     size_mb = os.path.getsize(raw_path) / 1024 / 1024
-    logger.info(f"✅ Audio raw berhasil didownload ({size_mb:.2f} MB)")
+    logger.info(f"[OK] Audio raw berhasil didownload ({size_mb:.2f} MB)")
 
     # Re-encode ke MP3 192k via ffmpeg (input = raw audio, bukan video)
     cmd = [
@@ -248,16 +248,16 @@ def download_audio_direct(audio_url, out_mp3):
 
     if result.returncode != 0:
         err = result.stderr.decode(errors='ignore')[-300:]
-        raise RuntimeError(f"ffmpeg audio→mp3 gagal: {err}")
+        raise RuntimeError(f"ffmpeg audio->mp3 gagal: {err}")
 
-    logger.info("🎵 Audio langsung berhasil di-encode ke .mp3")
+    logger.info("[MP3] Audio langsung berhasil di-encode ke .mp3")
 
 
 def download_audio_ytdlp(url, out_mp3):
     """
     Download audio asli video via yt-dlp dengan format bestaudio.
     Dipakai untuk YouTube, Instagram, Twitter/X, Facebook.
-    Tidak download video sama sekali — langsung ambil audio stream.
+    Tidak download video sama sekali - langsung ambil audio stream.
     """
     ydl_opts = {
         'format':        'bestaudio/best',
@@ -276,7 +276,7 @@ def download_audio_ytdlp(url, out_mp3):
         'keepvideo': False,
     }
 
-    logger.info(f"⬇️ yt-dlp bestaudio: {url[:80]}...")
+    logger.info(f"[DL] yt-dlp bestaudio: {url[:80]}...")
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([url])
 
@@ -284,16 +284,16 @@ def download_audio_ytdlp(url, out_mp3):
     expected = out_mp3 + '.mp3'
     if os.path.exists(expected):
         os.replace(expected, out_mp3)
-        logger.info(f"✅ yt-dlp audio selesai: {out_mp3}")
+        logger.info(f"[OK] yt-dlp audio selesai: {out_mp3}")
     elif os.path.exists(out_mp3):
-        logger.info(f"✅ yt-dlp audio selesai (langsung): {out_mp3}")
+        logger.info(f"[OK] yt-dlp audio selesai (langsung): {out_mp3}")
     else:
         # fallback scan file hasil yt-dlp
         import glob
         candidates = glob.glob(out_mp3 + '.*')
         if candidates:
             os.replace(candidates[0], out_mp3)
-            logger.info(f"✅ yt-dlp audio (fallback rename): {out_mp3}")
+            logger.info(f"[OK] yt-dlp audio (fallback rename): {out_mp3}")
         else:
             raise RuntimeError("yt-dlp tidak menghasilkan file audio")
 
@@ -306,10 +306,10 @@ def download_cover(cover_url, cover_path):
         if len(cr.content) > 1000:
             with open(cover_path, 'wb') as f:
                 f.write(cr.content)
-            logger.info("🖼️ Cover berhasil didownload dari TikWM")
+            logger.info("[IMG] Cover berhasil didownload dari TikWM")
             return True
     except Exception as e:
-        logger.warning(f"⚠️ Gagal download cover: {e}")
+        logger.warning(f"[WARN] Gagal download cover: {e}")
     return False
 
 
@@ -338,9 +338,9 @@ def embed_cover(mp3_path, cover_path):
             timeout=30,
         )
         os.replace(tmp_path, mp3_path)
-        logger.info("🖼️ Cover art berhasil di-embed ke MP3")
+        logger.info("[IMG] Cover art berhasil di-embed ke MP3")
     except Exception as e:
-        logger.warning(f"⚠️ Cover embed gagal (tidak fatal): {e}")
+        logger.warning(f"[WARN] Cover embed gagal (tidak fatal): {e}")
         if os.path.exists(tmp_path):
             try:
                 os.remove(tmp_path)
@@ -351,7 +351,7 @@ def embed_cover(mp3_path, cover_path):
 def get_tiktok_audio_url(tiktok_url):
     """
     Ambil URL audio stream asli video TikTok via yt-dlp (bestaudio).
-    Ini adalah audio yang benar-benar tertanam di video — bukan field 'music'
+    Ini adalah audio yang benar-benar tertanam di video - bukan field 'music'
     yang merupakan lagu background TikWM terpisah.
 
     Return: (audio_direct_url, cover_url, title) atau (None, cover, title)
@@ -373,27 +373,27 @@ def get_tiktok_audio_url(tiktok_url):
             for fmt in (info.get('formats') or []):
                 if fmt.get('acodec') not in (None, 'none') and fmt.get('vcodec') in (None, 'none'):
                     audio_url = fmt.get('url')
-                    logger.info(f"🎵 Audio stream ditemukan: {fmt.get('format_id')} | {fmt.get('ext')}")
+                    logger.info(f"[MP3] Audio stream ditemukan: {fmt.get('format_id')} | {fmt.get('ext')}")
                     break
 
             # Fallback: pakai URL terbaik (meski campur video, tetap bisa extract audio)
             if not audio_url:
                 audio_url = info.get('url')
-                logger.info("⚠️ Tidak ada pure audio stream, fallback ke URL terbaik")
+                logger.info("[WARN] Tidak ada pure audio stream, fallback ke URL terbaik")
 
             cover_url = info.get('thumbnail')
             title     = info.get('title', 'audio')
             return audio_url, cover_url, title
     except Exception as e:
-        logger.warning(f"⚠️ yt-dlp gagal ambil audio URL TikTok: {e}")
+        logger.warning(f"[WARN] yt-dlp gagal ambil audio URL TikTok: {e}")
         return None, None, None
 
 
 def process_mp3_pipeline(url, title, out_tmpl, progress_cb=None):
     """
-    Pipeline MP3 LANGSUNG AUDIO — tidak download video, langsung ambil audio stream.
+    Pipeline MP3 LANGSUNG AUDIO - tidak download video, langsung ambil audio stream.
 
-    - TikTok  : yt-dlp extract audio stream URL → download raw audio → encode MP3
+    - TikTok  : yt-dlp extract audio stream URL -> download raw audio -> encode MP3
     - Lainnya : yt-dlp bestaudio + FFmpegExtractAudio postprocessor
 
     Return: (path_mp3, final_title)
@@ -408,7 +408,7 @@ def process_mp3_pipeline(url, title, out_tmpl, progress_cb=None):
 
     if is_tiktok:
         # --- TIKTOK: extract audio stream URL via yt-dlp, lalu download langsung ---
-        emit(15, "📡 Ambil metadata & audio stream URL...")
+        emit(15, "[API] Ambil metadata & audio stream URL...")
 
         # Coba yt-dlp dulu untuk audio stream asli
         audio_url, cover_url, api_title = get_tiktok_audio_url(url)
@@ -422,11 +422,11 @@ def process_mp3_pipeline(url, title, out_tmpl, progress_cb=None):
                 final_title = tikwm_title or title
 
         if audio_url:
-            emit(30, "🎵 Download audio stream langsung...")
+            emit(30, "[MP3] Download audio stream langsung...")
             download_audio_direct(audio_url, out_mp3)
         else:
             # Terakhir: fallback ke TikWM video URL + extract audio
-            emit(20, "📡 Fallback: ambil URL dari TikWM...")
+            emit(20, "[API] Fallback: ambil URL dari TikWM...")
             video_url, cover_url2, tikwm_title = get_meta_via_tikwm(url)
             if not cover_url:
                 cover_url = cover_url2
@@ -434,12 +434,12 @@ def process_mp3_pipeline(url, title, out_tmpl, progress_cb=None):
                 final_title = tikwm_title or title
             if not video_url:
                 raise RuntimeError("Gagal ambil audio maupun video dari TikTok")
-            emit(35, "🎵 Download & extract audio dari video...")
+            emit(35, "[MP3] Download & extract audio dari video...")
             download_audio_direct(video_url, out_mp3)
 
     else:
         # --- PLATFORM LAIN: yt-dlp bestaudio + FFmpegExtractAudio ---
-        emit(15, "📡 Ambil audio stream via yt-dlp...")
+        emit(15, "[API] Ambil audio stream via yt-dlp...")
         final_title = title
 
         try:
@@ -451,13 +451,13 @@ def process_mp3_pipeline(url, title, out_tmpl, progress_cb=None):
         except Exception:
             cover_url = None
 
-        emit(30, "🎵 Download audio langsung (bestaudio)...")
+        emit(30, "[MP3] Download audio langsung (bestaudio)...")
         download_audio_ytdlp(url, out_mp3)
 
     # Embed cover art kalau ada
     if cover_url:
         cover_path = out_tmpl + '_cover.jpg'
-        emit(88, "🖼️ Embed cover art...")
+        emit(88, "[IMG] Embed cover art...")
         if download_cover(cover_url, cover_path):
             embed_cover(out_mp3, cover_path)
 
@@ -479,11 +479,11 @@ def search_videos_api():
     keyword    = data.get('keyword')
     limit      = data.get('limit', 10)
     filter_str = data.get('filter', '').strip()
-    logger.info(f"🔍 Searching for: {keyword} | filter: '{filter_str}'")
+    logger.info(f"[SEARCH] Searching for: {keyword} | filter: '{filter_str}'")
 
     filter_op, filter_detik = parse_filter_durasi(filter_str)
     if filter_str and filter_op is None:
-        logger.warning(f"⚠️ Format filter tidak dikenali: '{filter_str}'")
+        logger.warning(f"[WARN] Format filter tidak dikenali: '{filter_str}'")
 
     try:
         resp = session.post(
@@ -496,7 +496,7 @@ def search_videos_api():
 
         if json_data.get('code') != 0:
             msg = json_data.get('msg', 'API TikWM return non-zero code')
-            logger.error(f"❌ TikWM API Error: {msg}")
+            logger.error(f"[ERR] TikWM API Error: {msg}")
             return jsonify({"status": "error", "msg": f"TikWM API: {msg}"})
 
         videos  = json_data.get('data', {}).get('videos', [])
@@ -524,7 +524,7 @@ def search_videos_api():
                 'author_id': author.get('id', '') if isinstance(author, dict) else '',
             })
 
-        logger.info(f"✅ Found {len(results)} videos (after filter)")
+        logger.info(f"[OK] Found {len(results)} videos (after filter)")
         return jsonify({"status": "success", "data": results})
 
     except Exception as e:
@@ -532,7 +532,7 @@ def search_videos_api():
         return jsonify({"status": "error", "msg": str(e)})
 
 
-# Platform yang didukung — FIX agar URL asing tidak nyasar ke static files
+# Platform yang didukung - FIX agar URL asing tidak nyasar ke static files
 SUPPORTED_PLATFORMS = [
     'tiktok.com', 'vt.tiktok.com', 'vm.tiktok.com',
     'youtube.com', 'youtu.be',
@@ -550,13 +550,13 @@ def is_supported_url(url):
 def download_url_api():
     data      = request.json
     url_input = data.get('url', '').strip()
-    logger.info(f"🔗 Processing: {url_input}")
+    logger.info(f"[URL] Processing: {url_input}")
 
     # FIX: tolak URL platform yang tidak didukung (Pinterest, dll)
     # Sebelumnya Pinterest URL lolos ke yt_dlp dan sering menyebabkan
     # Flask fallback serve vinder.html sebagai file download
     if not is_supported_url(url_input):
-        logger.warning(f"⚠️ Platform tidak didukung: {url_input}")
+        logger.warning(f"[WARN] Platform tidak didukung: {url_input}")
         return jsonify({
             "status": "error",
             "msg":    "Platform tidak didukung. Vinder mendukung: TikTok, YouTube, Instagram, Twitter/X, Facebook."
@@ -573,7 +573,7 @@ def download_url_api():
 
     try:
         if any(x in url_input for x in ['tiktok.com', 'vt.tiktok.com', 'vm.tiktok.com']):
-             resp = session.get(f"https://www.tikwm.com/api/?url={url_input}", timeout=15).json()
+            resp = session.get(f"https://www.tikwm.com/api/?url={url_input}", timeout=15).json()
             if resp.get('code') == 0:
                 v = resp['data']
                 return jsonify({
@@ -585,7 +585,7 @@ def download_url_api():
                     "size":     f"{v.get('size', 0) / 1024 / 1024:.2f}MB",
                     "play":     v.get('play'),
                     "hdplay":   v.get('hdplay'),
-                    # 'music' field sengaja dihapus — pakai hdplay/play untuk audio
+                    # 'music' field sengaja dihapus - pakai hdplay/play untuk audio
                 })
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -641,10 +641,10 @@ def get_video_api():
 @app.route('/api/mp3_progress')
 def mp3_progress_api():
     """
-    SSE endpoint — push progress real-time ke frontend tiap tahap selesai.
+    SSE endpoint - push progress real-time ke frontend tiap tahap selesai.
     Format pesan : "data: {pct}|{msg}\\n\\n"
-    Pesan selesai: "data: 100|✅ DONE|{uid}|{filename}\\n\\n"
-    Pesan error  : "data: -1|❌ {msg}\\n\\n"
+    Pesan selesai: "data: 100|[OK] DONE|{uid}|{filename}\\n\\n"
+    Pesan error  : "data: -1|[ERR] {msg}\\n\\n"
     """
     tiktok_url = request.args.get('url')
     title      = request.args.get('title', 'audio')
@@ -661,7 +661,7 @@ def mp3_progress_api():
 
         # FIX: gunakan queue + thread agar SSE bisa yield progress real-time
         # Sebelumnya events dikumpul di list, baru di-yield setelah pipeline selesai
-        # — menyebabkan bubble lompat langsung 0% → 100% tanpa animasi bertahap
+        # - menyebabkan bubble lompat langsung 0% -> 100% tanpa animasi bertahap
         import queue, threading
 
         q = queue.Queue()
@@ -671,7 +671,7 @@ def mp3_progress_api():
 
         def run_pipeline():
             try:
-                emit_sse(5, "🔗 Resolve URL...")
+                emit_sse(5, "[URL] Resolve URL...")
                 url = tiktok_url
                 if 'vt.tiktok.com' in url or 'vm.tiktok.com' in url:
                     url = resolve_tiktok_url(url)
@@ -680,21 +680,21 @@ def mp3_progress_api():
 
 
                 if not os.path.exists(out_mp3):
-                    q.put(send(-1, "❌ File MP3 tidak berhasil dibuat"))
+                    q.put(send(-1, "[ERR] File MP3 tidak berhasil dibuat"))
                     do_cleanup(out_tmpl)
                     q.put(None)
                     return
 
                 fname = f"[Vinder].{safe_filename(final_title)}.mp3"
-                emit_sse(95, "📦 Siapkan file...")
+                emit_sse(95, "[PKG] Siapkan file...")
                 with open(out_tmpl + '.ready', 'w') as f:
                     f.write(fname)
 
-                q.put(send(100, f"✅ DONE|{uid}|{fname}"))
+                q.put(send(100, f"[OK] DONE|{uid}|{fname}"))
             except Exception as e:
                 logger.error(f"SSE MP3 Error: {e}")
                 do_cleanup(out_tmpl)
-                q.put(send(-1, f"❌ Error: {str(e)[:100]}"))
+                q.put(send(-1, f"[ERR] Error: {str(e)[:100]}"))
             finally:
                 q.put(None)  # sentinel = selesai
 
@@ -705,7 +705,7 @@ def mp3_progress_api():
             try:
                 item = q.get(timeout=120)
             except queue.Empty:
-                yield send(-1, "❌ Timeout: proses terlalu lama")
+                yield send(-1, "[ERR] Timeout: proses terlalu lama")
                 break
             if item is None:
                 break
@@ -738,7 +738,7 @@ def get_mp3_file_api():
     with open(done_flag) as f:
         filename = f.read().strip()
 
-    # [OPTIMASI] send_file stream langsung — tidak load seluruh file ke RAM
+    # [OPTIMASI] send_file stream langsung - tidak load seluruh file ke RAM
     response = send_file(
         out_mp3,
         mimetype='audio/mpeg',
@@ -770,7 +770,7 @@ def get_mp3_api():
     out_tmpl = f'/tmp/vinder_{uid}'
 
     try:
-        logger.info(f"🎵 MP3 request: {tiktok_url}")
+        logger.info(f"[MP3] MP3 request: {tiktok_url}")
         out_mp3, final_title = process_mp3_pipeline(tiktok_url, title, out_tmpl)
 
         if not os.path.exists(out_mp3):
@@ -778,9 +778,9 @@ def get_mp3_api():
             return "Gagal: File MP3 tidak berhasil dibuat.", 500
 
         filename = f"[Vinder].{safe_filename(final_title)}.mp3"
-        logger.info(f"✅ Siap dikirim: {filename}")
+        logger.info(f"[OK] Siap dikirim: {filename}")
 
-        # [OPTIMASI] send_file stream langsung — tidak load seluruh file ke RAM
+        # [OPTIMASI] send_file stream langsung - tidak load seluruh file ke RAM
         response = send_file(
             out_mp3,
             mimetype='audio/mpeg',
@@ -805,8 +805,8 @@ def get_mp3_api():
 @app.route('/api/fast_mp3')
 def fast_mp3_api():
     """
-    ⚡ FAST MP3 — zero encode, langsung pipe audio CDN ke browser.
-    File output: .mp3 (rename saja, isi m4a/aac — semua player bisa baca).
+     FAST MP3 - zero encode, langsung pipe audio CDN ke browser.
+    File output: .mp3 (rename saja, isi m4a/aac - semua player bisa baca).
     Kecepatan setara MP4 download karena skip ffmpeg total.
     """
     tiktok_url = request.args.get('url', '').strip()
@@ -838,7 +838,7 @@ def fast_mp3_api():
                 if tikwm_title:
                     final_title = tikwm_title
         else:
-            # YouTube / Instagram / dll — ambil bestaudio URL via yt-dlp
+            # YouTube / Instagram / dll - ambil bestaudio URL via yt-dlp
             ydl_opts = {
                 'format':      'bestaudio/best',
                 'quiet':       True,
@@ -855,7 +855,7 @@ def fast_mp3_api():
         if not audio_url:
             return "Gagal: tidak bisa ambil URL audio", 500
 
-        # Pipe langsung dari CDN ke browser — zero temp file, zero encode
+        # Pipe langsung dari CDN ke browser - zero temp file, zero encode
         headers = TIKTOK_HEADERS.copy()
         headers['Range'] = 'bytes=0-'
 
