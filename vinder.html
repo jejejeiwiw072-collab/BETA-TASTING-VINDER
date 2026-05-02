@@ -748,7 +748,7 @@
       font-size: 12px;
       color: var(--muted2);
     }
-       .upload-preview img { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; }
+        .upload-preview img { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; }
     .upload-preview span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .upload-preview button {
       width: auto;
@@ -901,7 +901,7 @@
   <!-- ===== NAVBAR ===== -->
   <nav class="navbar">
     <div class="navbar-left">
-      <span class="version-badge">v1.5</span>
+      <span class="version-badge">v1.8</span>
       <img src="20260424_191010.jpg" style="width: 40px; height: 40px;">
       <span class="navbar-brand">Vinder</span>
     </div>
@@ -986,7 +986,7 @@
       </div>
 
       <div class="input-wrapper">
-        <input id="dl-url" placeholder="TikTok / YouTube / Instagram / Twitter URL..." type="text"/>
+        <input id="dl-url" placeholder="https://vt.tiktok.com/" type="text"/>
         <span class="clear-btn" id="clear-dl-url" onclick="clearInput('dl-url')">✕</span>
       </div>
       <div id="url-preview-container"></div>
@@ -1058,7 +1058,7 @@
         <div class="donate-desc">Kalau Vinder bermanfaat buat lo,<br>traktir gw kopi biar semangat ngoding! 🔥</div>
       </div>
       <div class="donate-options">
-        <a class="donate-option" href="https://saweria.co/ZakdevComunity" target="_blank">
+        <a class="donate-option" href="https://saweria.co/zakdev" target="_blank">
           <div class="donate-opt-icon" style="background:#1a1208;">🧡</div>
           <div class="donate-opt-info">
             <div class="donate-opt-name">Saweria</div>
@@ -1173,10 +1173,7 @@
   ];
 
   function isSupportedUrl(url) {
-    try {
-      const host = new URL(url).hostname.replace('www.', '');
-      return SUPPORTED_HOSTS.some(p => host === p || host.endsWith('.' + p));
-    } catch { return false; }
+    return url.startsWith('https://vt.tiktok.com/') || url.startsWith('https://vm.tiktok.com/');
   }
 
   async function autoPreview(url) {
@@ -1190,7 +1187,7 @@
       document.getElementById('btn-dlurl').textContent = 'Download Langsung';
       if (url.startsWith('http') && !isSupportedUrl(url)) {
         const statusEl = document.getElementById('url-status');
-        statusEl.textContent = '⚠️ Platform tidak didukung. Coba: TikTok, YouTube, Instagram, Twitter/X, Facebook.';
+        statusEl.textContent = '❌ Link tidak valid. Hanya link vt.tiktok.com / vm.tiktok.com yang diterima.';
         statusEl.className = 'status-txt err';
       }
       return;
@@ -1253,7 +1250,23 @@
     const filename = '[Vinder].' + title.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 60) + '.mp3';
     const dlUrl = `/api/fast_mp3?url=${encodeURIComponent(url)}&title=${encodeURIComponent(title)}`;
 
-    // Langsung trigger download — browser mulai terima byte pertama begitu server ready
+    // Toast muncul SEBELUM a.click() biar pasti kerender
+    const toast = document.createElement('div');
+    toast.style.cssText = [
+      'position:fixed', 'bottom:90px', 'left:50%', 'transform:translateX(-50%)',
+      'background:#1a1a2e', 'border:1px solid #9333ea88', 'border-left:3px solid #9333ea',
+      'color:#ccc', 'font-size:13px', 'line-height:1.6',
+      'padding:12px 16px', 'border-radius:10px', 'max-width:320px', 'width:90%',
+      'z-index:9999', 'box-shadow:0 4px 24px rgba(147,51,234,0.2)'
+    ].join(';');
+    toast.innerHTML =
+      '<div style="font-weight:600;color:#a855f7;margin-bottom:4px;">ℹ️ Info File MP3</div>' +
+      '<div>Preview Google mungkin tampil sebagai <b>video</b> — ini normal.<br>' +
+      'File kamu <b>tetap MP3 yang valid</b> dan bisa diputar di semua music player.</div>';
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 6000);
+
+    // Trigger download
     const a = document.createElement('a');
     a.href = dlUrl;
     a.download = filename;
@@ -1261,7 +1274,6 @@
     a.click();
     document.body.removeChild(a);
 
-    // Bubble success setelah browser konfirmasi download dimulai (~1.5s cukup)
     setTimeout(() => bubble.setSuccess(), 1500);
   }
 
@@ -1283,7 +1295,7 @@
       </div>
       <button class="dl-close" onclick="closeBubble(this)">✕</button>
     `;
-   el.querySelector('.dl-bubble-label').textContent = title;
+    el.querySelector('.dl-bubble-label').textContent = title;
     wrap.appendChild(el);
     const bar = el.querySelector('#' + barId);
     const sub = el.querySelector('.dl-bubble-sub');
@@ -1403,21 +1415,26 @@
     const play       = decodeURIComponent(encPlay);
     const resolution = resSelected['Search'];
 
-    if (selectedFormat === 'mp3') {
-      // Pakai video URL (hdplay) sebagai sumber audio — BUKAN music field
-      startMp3Background(hdplay, title);
-    } else {
-      const t    = Date.now();
-      const vUrl = resolution === 'HYPE v1.3' ? hdplay : play;
-      const dUrl = `/api/get_video?url=${encodeURIComponent(vUrl)}&title=${encodeURIComponent(title)}&mode=${encodeURIComponent(resolution)}&nocache=${t}`;
-      handleRealDownload(dUrl, title);
-    }
+    // Card "Cari Video" selalu MP4, tidak terpengaruh toggle format
+    const t    = Date.now();
+    const vUrl = resolution === 'HYPE v1.3' ? hdplay : play;
+    const dUrl = `/api/get_video?url=${encodeURIComponent(vUrl)}&title=${encodeURIComponent(title)}&mode=${encodeURIComponent(resolution)}&nocache=${t}`;
+    handleRealDownload(dUrl, title);
   }
 
   /* ===== DOWNLOAD URL ===== */
   async function doDownloadUrl() {
     const url = document.getElementById('dl-url').value.trim();
     if (!url) return;
+
+    // Validasi: hanya vt.tiktok.com / vm.tiktok.com
+    if (!isSupportedUrl(url)) {
+      const statusEl = document.getElementById('url-status');
+      statusEl.textContent = '❌ Link tidak valid. Hanya link vt.tiktok.com / vm.tiktok.com yang diterima.';
+      statusEl.className = 'status-txt err';
+      return;
+    }
+
     const resolution = resSelected['Url'];
 
     // MP3 mode → background job langsung
