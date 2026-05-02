@@ -571,7 +571,7 @@ def download_url_api():
         'http_headers': DEFAULT_HEADERS,
     }
 
-   try:
+    try:
         if any(x in url_input for x in ['tiktok.com', 'vt.tiktok.com', 'vm.tiktok.com']):
             resp = session.get(f"https://www.tikwm.com/api/?url={url_input}", timeout=15).json()
             if resp.get('code') == 0:
@@ -883,10 +883,87 @@ def fast_mp3_api():
         logger.error(f"fast_mp3 error: {e}")
         return f"Error: {str(e)}", 500
 
+
+
+@app.route('/api/fast_mp3')
+def fast_mp3_api():
+    """
+    FAST MP3 - zero encode, langsung pipe audio CDN ke browser.
+    File output: .mp3 (rename saja, isi m4a/aac - semua player bisa baca).
+    Kecepatan setara MP4 karena skip ffmpeg total.
+    """
+    tiktok_url = request.args.get('url', '').strip()
+    title = request.args.get('title', 'audio')
+
+    if not tiktok_url:
+        return "URL Kosong", 400
+
+    if 'vt.tiktok.com' in tiktok_url or 'vm.tiktok.com' in tiktok_url:
+        tiktok_url = resolve_tiktok_url(tiktok_url)
+
+    is_tiktok = any(x in tiktok_url for x in ['tiktok.com', 'vt.tiktok.com', 'vm.tiktok.com'])
+
+    try:
+        audio_url = None
+        final_title = title
+
+        if is_tiktok:
+            audio_url, _, api_title = get_tiktok_audio_url(tiktok_url)
+            if api_title:
+                final_title = api_title
+            if not audio_url:
+                video_url, _, tikwm_title = get_meta_via_tikwm(tiktok_url)
+                audio_url = video_url
+                if tikwm_title:
+                    final_title = tikwm_title
+        else:
+            ydl_opts = {
+                'format': 'bestaudio/best',
+                'quiet': True,
+                'no_warnings': True,
+                'noplaylist': True,
+                'user_agent': TIKTOK_UA,
+                'http_headers': DEFAULT_HEADERS,
+            }
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(tiktok_url, download=False)
+                audio_url = info.get('url')
+                final_title = info.get('title', title)
+
+        if not audio_url:
+            return "Gagal: tidak bisa ambil URL audio", 500
+
+        headers = TIKTOK_HEADERS.copy()
+        headers['Range'] = 'bytes=0-'
+
+        r = session.get(audio_url, stream=True, timeout=30, headers=headers, allow_redirects=True)
+        if r.status_code >= 400:
+            return f"Gagal: CDN return {r.status_code}", 502
+
+        filename = f"[Vinder].{safe_filename(final_title)}.mp3"
+
+        def generate():
+            for chunk in r.iter_content(chunk_size=512 * 1024):
+                if chunk:
+                    yield chunk
+
+        return Response(
+            stream_with_context(generate()),
+            headers={
+                'Content-Type': 'audio/mpeg',
+                'Content-Disposition': f'attachment; filename="{filename}"',
+                'Cache-Control': 'no-cache',
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"fast_mp3 error: {e}")
+        return f"Error: {str(e)}", 500
+
 # =============================================================================
 # MAIN
 # =============================================================================
 
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, threaded=True) 
+    app.run(host='0.0.0.0', port=port, threaded=True)
