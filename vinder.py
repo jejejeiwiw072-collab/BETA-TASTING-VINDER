@@ -3,8 +3,8 @@ import re
 import time
 import requests
 import logging
-import subprocess
 import yt_dlp
+from tiktok_downloader import ssstik
 from flask import Flask, request, jsonify, send_file, Response, stream_with_context
 
 
@@ -114,14 +114,13 @@ def safe_filename(title, max_len=60):
 
 def do_cleanup(out_tmpl):
     """Hapus semua file temp yang terkait satu sesi download."""
-    suffixes = ['.mp4', '.mp3', '_cover.jpg', '.ready']
-    for suffix in suffixes:
-        path = out_tmpl + suffix
-        if os.path.exists(path):
-            try:
-                os.remove(path)
-            except Exception:
-                pass
+    import glob
+    for path in glob.glob(out_tmpl + '*'):
+        try:
+            os.remove(path)
+            logger.info(f"🗑️ Cache dihapus: {path}")
+        except Exception:
+            pass
 
 
 # =============================================================================
@@ -145,11 +144,8 @@ def fetch_video_stream(url, fallback_url=None):
 
     try:
         r = session.get(url, stream=True, timeout=30, headers=headers, allow_redirects=True)
-        content_type   = r.headers.get('Content-Type', '').lower()
-        content_length = int(r.headers.get('Content-Length', 0))
+        content_type = r.headers.get('Content-Type', '').lower()
 
-        # FIX: blokir HTML/JSON tanpa andal Content-Length
-        # CDN publik sering tidak kirim Content-Length, cek content-type saja
         if 'text/html' in content_type or 'application/json' in content_type:
             logger.warning(f"⚠️ Blokir non-video content: {content_type}")
             if fallback_url:
@@ -174,7 +170,7 @@ def fetch_video_stream(url, fallback_url=None):
 def get_meta_via_tikwm(tiktok_url, retries=3):
     """
     Ambil metadata video dari TikWM API dengan retry otomatis.
-    Return: (video_url, cover_url, title) — pakai hdplay/play, BUKAN music field.
+    Return: (video_url, title)
     """
     for attempt in range(1, retries + 1):
         try:
@@ -187,10 +183,9 @@ def get_meta_via_tikwm(tiktok_url, retries=3):
             if data.get('code') == 0:
                 v         = data['data']
                 video_url = v.get('hdplay') or v.get('play')
-                cover_url = v.get('origin_cover') or v.get('cover')
                 title     = v.get('title', 'audio')
                 logger.info(f"✅ TikWM OK (attempt {attempt})")
-                return video_url, cover_url, title
+                return video_url, title
             else:
                 logger.warning(f"⚠️ TikWM code != 0 (attempt {attempt}): {data.get('msg')}")
 
@@ -200,118 +195,14 @@ def get_meta_via_tikwm(tiktok_url, retries=3):
         if attempt < retries:
             time.sleep(1.5 * attempt)
 
-    return None, None, None
+    return None, None
 
 
-def download_video_to_temp(video_url, out_mp4):
+def process_mp3_pipeline(url, title, out_tmpl, progress_cb=None):
     """
-    Download video dari URL ke file .mp4 sementara di server (/tmp/).
-    Sama persis seperti sistem MP4, tapi disimpan di server dulu.
-    Tidak masuk ke penyimpanan user.
-    """
-    headers = TIKTOK_HEADERS.copy()
-    headers["Range"] = "bytes=0-"
-
-    logger.info(f"⬇️ Download video ke temp: {out_mp4}")
-    r = session.get(video_url, stream=True, timeout=60, headers=headers, allow_redirects=True)
-    r.raise_for_status()
-
-    with open(out_mp4, 'wb') as f:
-        for chunk in r.iter_content(chunk_size=1024 * 1024):
-            if chunk:
-                f.write(chunk)
-
-    size_mb = os.path.getsize(out_mp4) / 1024 / 1024
-    logger.info(f"✅ Video berhasil didownload ({size_mb:.2f} MB): {out_mp4}")
-
-
-def convert_mp4_to_mp3(out_mp4, out_mp3):
-    """
-    Convert file .mp4 yang sudah ada di server → .mp3.
-    ffmpeg baca dari local file (lebih stabil dari stream URL).
-    Setelah selesai, file .mp4 temp dihapus otomatis.
-    """
-    cmd = [
-        'ffmpeg', '-y',
-        '-i', out_mp4,
-        '-vn',
-        '-acodec', 'libmp3lame',
-        '-ab', '192k',
-        '-ar', '44100',
-        out_mp3,
-    ]
-    result = subprocess.run(
-        cmd,
-        capture_output=True,
-        timeout=180,
-    )
-    # Hapus .mp4 temp setelah convert, apapun hasilnya
-    try:
-        os.remove(out_mp4)
-        logger.info(f"🗑️ File temp .mp4 dihapus: {out_mp4}")
-    except Exception:
-        pass
-
-    if result.returncode != 0:
-        err = result.stderr.decode(errors='ignore')[-300:]
-        raise RuntimeError(f"ffmpeg convert mp4→mp3 gagal: {err}")
-    logger.info("🎵 Audio berhasil di-convert dari .mp4 → .mp3")
-
-
-def download_cover(cover_url, cover_path):
-    """Download thumbnail dari TikWM sebagai cover art."""
-    try:
-        cr = session.get(cover_url, timeout=15)
-        cr.raise_for_status()
-        if len(cr.content) > 1000:
-            with open(cover_path, 'wb') as f:
-                f.write(cr.content)
-            logger.info("🖼️ Cover berhasil didownload dari TikWM")
-            return True
-    except Exception as e:
-        logger.warning(f"⚠️ Gagal download cover: {e}")
-    return False
-
-
-def embed_cover(mp3_path, cover_path):
-    """
-    Embed cover art ke file MP3 via ffmpeg langsung (tanpa file temp).
-    Tulis ke mp3_path + '.tmp' lalu atomic rename.
-    """
-    tmp_path = mp3_path + '.tmp'
-    try:
-        subprocess.run(
-            [
-                'ffmpeg', '-y',
-                '-i', mp3_path,
-                '-i', cover_path,
-                '-map', '0:a', '-map', '1:v',
-                '-c:a', 'copy',
-                '-c:v', 'mjpeg',
-                '-id3v2_version', '3',
-                '-metadata:s:v', 'title=Album cover',
-                '-metadata:s:v', 'comment=Cover (front)',
-                tmp_path,
-            ],
-            check=True,
-            capture_output=True,
-            timeout=30,
-        )
-        os.replace(tmp_path, mp3_path)
-        logger.info("🖼️ Cover art berhasil di-embed ke MP3")
-    except Exception as e:
-        logger.warning(f"⚠️ Cover embed gagal (tidak fatal): {e}")
-        if os.path.exists(tmp_path):
-            try:
-                os.remove(tmp_path)
-            except Exception:
-                pass
-
-
-def process_mp3_pipeline(tiktok_url, title, out_tmpl, progress_cb=None):
-    """
-    Pipeline MP3 SIMPLE — download .mp4 lalu langsung rename jadi .mp3.
-    Tanpa encode, tanpa ffmpeg convert. Cepat & ringan.
+    Pipeline MP3 via ssstik (tiktok_downloader) — ambil MP3 langsung dari ssstik.io.
+    Untuk non-TikTok fallback ke yt-dlp.
+    Cache otomatis dihapus setelah selesai via do_cleanup di caller.
 
     Return: (path_mp3, final_title)
     """
@@ -320,31 +211,85 @@ def process_mp3_pipeline(tiktok_url, title, out_tmpl, progress_cb=None):
             progress_cb(pct, msg)
         logger.info(f"[{pct}%] {msg}")
 
-    out_mp4 = out_tmpl + '.mp4'
     out_mp3 = out_tmpl + '.mp3'
+    is_tiktok = any(x in url for x in ['tiktok.com', 'vt.tiktok.com', 'vm.tiktok.com'])
 
-    emit(15, "📡 Ambil metadata video...")
-    video_url, cover_url, api_title = get_meta_via_tikwm(tiktok_url)
-    final_title = api_title or title
+    # ── TIKTOK: pakai ssstik ─────────────────────────────────────────────────
+    if is_tiktok:
+        emit(15, "📡 Ambil link audio via ssstik...")
+        try:
+            results = ssstik(url)
+            # Cari item dengan type 'music' / audio
+            mp3_item = None
+            for item in results:
+                if 'music' in str(getattr(item, 'type', '')).lower():
+                    mp3_item = item
+                    break
+            # Kalau tidak ketemu 'music', ambil item pertama (biasanya ada audio)
+            if mp3_item is None and results:
+                mp3_item = results[0]
 
-    if not video_url:
-        raise RuntimeError("Gagal ambil URL video dari TikWM")
+            if mp3_item is None:
+                raise RuntimeError("ssstik tidak mengembalikan hasil apapun")
 
-    emit(30, "⬇️ Download video...")
-    download_video_to_temp(video_url, out_mp4)
+            emit(40, "⬇️ Download MP3 dari ssstik...")
+            mp3_item.download(out_mp3)
 
-    # FIX: konversi ffmpeg beneran, bukan sekadar rename
-    # Rename menghasilkan file MP4 berekstensi .mp3 — tidak valid di music player
-    emit(70, "🎵 Convert ke MP3...")
-    convert_mp4_to_mp3(out_mp4, out_mp3)
+            # Ambil title dari tikwm sebagai fallback
+            final_title = title
+            try:
+                emit(85, "📝 Ambil metadata...")
+                _, api_title = get_meta_via_tikwm(url)
+                if api_title:
+                    final_title = api_title
+            except Exception:
+                pass
 
-    # Embed cover art kalau ada
-    if cover_url:
-        cover_path = out_tmpl + '_cover.jpg'
-        emit(88, "🖼️ Embed cover art...")
-        if download_cover(cover_url, cover_path):
-            embed_cover(out_mp3, cover_path)
+            emit(90, "✅ Audio siap...")
+            return out_mp3, final_title
 
+        except Exception as e:
+            logger.warning(f"⚠️ ssstik gagal: {e} — fallback ke yt-dlp")
+
+    # ── NON-TIKTOK (atau ssstik gagal): fallback yt-dlp ─────────────────────
+    emit(20, "📡 Proses via yt-dlp...")
+
+    def ytdlp_hook(d):
+        if d['status'] == 'downloading':
+            downloaded = d.get('downloaded_bytes', 0)
+            total      = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
+            if total:
+                pct = int(30 + (downloaded / total) * 55)
+                emit(pct, f"⬇️ Download {d.get('_percent_str', '').strip()}...")
+        elif d['status'] == 'finished':
+            emit(87, "🎵 Proses audio...")
+
+    ydl_opts = {
+        'format':            'bestaudio/best',
+        'outtmpl':           out_tmpl,
+        'quiet':             True,
+        'no_warnings':       True,
+        'noplaylist':        True,
+        'user_agent':        TIKTOK_UA,
+        'http_headers':      DEFAULT_HEADERS,
+        'progress_hooks':    [ytdlp_hook],
+        'postprocessors': [{
+            'key':              'FFmpegExtractAudio',
+            'preferredcodec':   'mp3',
+            'preferredquality': '0',       # VBR V0 = kualitas tertinggi
+        }],
+        'postprocessor_args': {
+            'ffmpeg': ['-ar', '44100'],
+        },
+    }
+
+    final_title = title
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        if info and (not final_title or final_title == 'audio'):
+            final_title = info.get('title', title)
+
+    emit(90, "✅ Audio siap...")
     return out_mp3, final_title
 
 
@@ -463,13 +408,11 @@ def download_url_api():
                 return jsonify({
                     "status":   "success",
                     "title":    v.get('title', 'TikTok Video'),
-                    "cover":    v.get('origin_cover') or v.get('cover'),
                     "author":   v.get('author', {}).get('nickname', 'User'),
                     "duration": f"{v.get('duration', 0)}s",
                     "size":     f"{v.get('size', 0) / 1024 / 1024:.2f}MB",
                     "play":     v.get('play'),
                     "hdplay":   v.get('hdplay'),
-                    # 'music' field sengaja dihapus — pakai hdplay/play untuk audio
                 })
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
