@@ -214,9 +214,6 @@ def get_meta_via_tikwm(tiktok_url, retries=3, for_audio=False):
             if data.get('code') == 0:
                 v         = data['data']
                 if for_audio:
-                    # Untuk MP3: pakai wmplay (watermark/SD) atau play (SD)
-                    # Audio track-nya identik dengan hdplay, tapi video jauh lebih kecil
-                    # ffmpeg akan buang video track langsung, jadi resolusi tidak relevan
                     video_url = v.get('wmplay') or v.get('play')
                     logger.info(f"[OK] TikWM OK - pakai SD URL untuk audio (attempt {attempt})")
                 else:
@@ -224,9 +221,11 @@ def get_meta_via_tikwm(tiktok_url, retries=3, for_audio=False):
                     logger.info(f"[OK] TikWM OK - pakai HD URL untuk video (attempt {attempt})")
                 cover_url = v.get('origin_cover') or v.get('cover')
                 title     = v.get('title', 'audio')
+                logger.info(f"[IMG] TikWM cover_url: {cover_url[:80] if cover_url else 'NONE'}")
                 return video_url, cover_url, title
             else:
-                logger.warning(f"[WARN] TikWM code != 0 (attempt {attempt}): {data.get('msg')}")
+                logger.warning(f"[WARN] TikWM code={data.get('code')} msg={data.get('msg')} (attempt {attempt})")
+                logger.warning(f"[WARN] TikWM raw response: {str(data)[:200]}")
 
         except Exception as e:
             logger.warning(f"[WARN] TikWM gagal attempt {attempt}: {e}")
