@@ -389,22 +389,41 @@ def download_cover(cover_url, cover_path):
 
 def embed_cover(mp3_path, cover_path):
     """
-    Embed cover art ke file MP3 via ffmpeg langsung (tanpa file temp).
-    Tulis ke mp3_path + '.tmp' lalu atomic rename.
+    Embed cover art ke file MP3 via ffmpeg.
+    - Resize cover ke 500x500 (standar ID3) biar tidak bengkak
+    - Embed sebagai JPEG attachment bukan video stream (fix preview Google)
     """
-    tmp_path = mp3_path + '.tmp'
+    tmp_path  = mp3_path + '.tmp'
+    thumb_path = cover_path + '.thumb.jpg'
     try:
+        # Step 1: resize cover ke 500x500 JPEG quality 85
+        subprocess.run(
+            [
+                'ffmpeg', '-y',
+                '-i', cover_path,
+                '-vf', 'scale=500:500:force_original_aspect_ratio=decrease,pad=500:500:(ow-iw)/2:(oh-ih)/2',
+                '-q:v', '6',   # JPEG quality ~85 (skala 2-31, makin kecil makin bagus)
+                thumb_path,
+            ],
+            check=True,
+            capture_output=True,
+            timeout=15,
+        )
+
+        # Step 2: embed thumbnail ke MP3 sebagai ID3 APIC frame (pure JPEG, bukan video stream)
         subprocess.run(
             [
                 'ffmpeg', '-y',
                 '-i', mp3_path,
-                '-i', cover_path,
-                '-map', '0:a', '-map', '1:v',
+                '-i', thumb_path,
+                '-map', '0:a',
+                '-map', '1:v',
                 '-c:a', 'copy',
-                '-c:v', 'mjpeg',
+                '-c:v', 'copy',          # copy JPEG as-is, bukan encode ulang ke mjpeg
                 '-id3v2_version', '3',
                 '-metadata:s:v', 'title=Album cover',
                 '-metadata:s:v', 'comment=Cover (front)',
+                '-disposition:v', 'attached_pic',  # tandai sebagai attached picture, BUKAN video stream
                 tmp_path,
             ],
             check=True,
@@ -412,12 +431,13 @@ def embed_cover(mp3_path, cover_path):
             timeout=30,
         )
         os.replace(tmp_path, mp3_path)
-        logger.info("[IMG] Cover art berhasil di-embed ke MP3")
+        logger.info("[IMG] Cover art berhasil di-embed ke MP3 (500x500)")
     except Exception as e:
         logger.warning(f"[WARN] Cover embed gagal (tidak fatal): {e}")
-        if os.path.exists(tmp_path):
-            try:
-                os.remove(tmp_path)
+        for p in [tmp_path, thumb_path]:
+            if os.path.exists(p):
+                try:
+                    os.remove(p)
             except Exception:
                 pass
 
