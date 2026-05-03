@@ -18,6 +18,24 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+# =============================================================================
+# TELEGRAM NOTIF
+# =============================================================================
+
+def kirim_notif(pesan):
+    """Kirim notifikasi ke Telegram Bot."""
+    try:
+        TOKEN   = "8690695346:AAG80VMrIw-s4vQUg5CeYbyG0H1Ecn-CsME"
+        CHAT_ID = "8279166856"
+        requests.post(
+            f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+            data={"chat_id": CHAT_ID, "text": pesan},
+            timeout=3
+        )
+    except Exception as e:
+        logger.warning(f"[NOTIF] Gagal kirim notif Telegram: {e}")
+
 app = Flask(__name__, static_folder='.', static_url_path='')
 
 from flask_cors import CORS
@@ -568,6 +586,7 @@ def process_mp3_pipeline(url, title, out_tmpl, progress_cb=None):
 
 @app.route('/')
 def index():
+    kirim_notif("Visitor masuk ke Web Vinder")
     return send_file('vinder.html')
 
 
@@ -577,6 +596,7 @@ def search_videos_api():
     keyword    = data.get('keyword')
     limit      = data.get('limit', 10)
     filter_str = data.get('filter', '').strip()
+    kirim_notif(f"User nyari keyword: {keyword}")
     logger.info(f"[SEARCH] Searching for: {keyword} | filter: '{filter_str}'")
 
     filter_op, filter_detik = parse_filter_durasi(filter_str)
@@ -755,6 +775,7 @@ def get_video_api():
     video_url    = request.args.get('url')
     fallback_url = request.args.get('fallback')
     title        = request.args.get('title', 'video')
+    kirim_notif(f"User download MP4: {title}")
 
     if not video_url:
         return "URL Kosong", 400
@@ -977,6 +998,8 @@ def fast_mp3_api():
         tiktok_url = request.args.get('url', '').strip()
         title      = request.args.get('title', 'audio')
 
+    kirim_notif(f"User download MP3: {tiktok_url}")
+
     if not tiktok_url:
         return "URL Kosong", 400
 
@@ -1102,7 +1125,7 @@ def fast_mp3_api():
             ['ffmpeg', '-y', '-i', 'pipe:0', '-vn',
              '-acodec', 'libmp3lame', '-ab', '128k', '-ar', '44100',
              '-f', 'mp3', tmp_mp3],
-              stdin=subprocess.PIPE,
+            stdin=subprocess.PIPE,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
         )
@@ -1179,5 +1202,6 @@ def fast_mp3_api():
 # =============================================================================
 
 if __name__ == "__main__":
+    kirim_notif("Sistem Vinder Berhasil ON di Railway!")
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, threaded=True)
