@@ -748,7 +748,7 @@
       font-size: 12px;
       color: var(--muted2);
     }
-        .upload-preview img { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; }
+                .upload-preview img { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; }
     .upload-preview span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .upload-preview button {
       width: auto;
@@ -1247,23 +1247,8 @@
 
   function startMp3Background(url, title) {
     const bubble = createBubble(title, true);
-    const filename = '[Vinder].' + title.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 60) + '.mp3';
+    const filename = '[Vinder].' + title.replace(/[\\/:\*?"<>|]/g, '').replace(/[#@]\S*/g, '').replace(/\s+/g, ' ').trim().slice(0, 60) + '.mp3';
     const dlUrl = `/api/fast_mp3?url=${encodeURIComponent(url)}&title=${encodeURIComponent(title)}`;
-
-    // Toast muncul SEBELUM a.click() biar pasti kerender
-    const toast = document.createElement('div');
-    toast.style.cssText = [
-      'position:fixed', 'bottom:90px', 'left:50%', 'transform:translateX(-50%)',
-      'background:#1a1a2e', 'border:1px solid #9333ea88', 'border-left:3px solid #9333ea',
-      'color:#ccc', 'font-size:13px', 'line-height:1.6',
-      'padding:12px 16px', 'border-radius:10px', 'max-width:320px', 'width:90%',
-      'z-index:9999', 'box-shadow:0 4px 24px rgba(147,51,234,0.2)'
-    ].join(';');
-    toast.innerHTML =
-      '<div style="font-weight:600;color:#a855f7;margin-bottom:4px;">ℹ️ Info File MP3</div>' +
-      '<div>Preview Google mungkin tampil sebagai <b>video</b> — ini normal.<br>' +
-      'File kamu <b>tetap MP3 yang valid</b> dan bisa diputar di semua music player.</div>';
-    document.body.appendChild(toast);
 
     // Trigger download
     const a = document.createElement('a');
