@@ -939,12 +939,13 @@ def fast_mp3_api():
             if api_title:
                 final_title = api_title
 
-            # Fallback ke TikWM
+            # Selalu ambil metadata TikWM untuk cover (yt-dlp sering ga return thumbnail TikTok)
+            video_url, tikwm_cover, tikwm_title = get_meta_via_tikwm(tiktok_url, for_audio=True)
+            if not cover_url:
+                cover_url = tikwm_cover
             if not audio_url:
-                video_url, tikwm_cover, tikwm_title = get_meta_via_tikwm(tiktok_url, for_audio=True)
                 audio_url = video_url
-                if not cover_url:
-                    cover_url = tikwm_cover
+            if not final_title or final_title == title:
                 if tikwm_title:
                     final_title = tikwm_title
         else:
