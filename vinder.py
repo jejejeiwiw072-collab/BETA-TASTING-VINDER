@@ -219,9 +219,13 @@ def get_meta_via_tikwm(tiktok_url, retries=3, for_audio=False):
                 else:
                     video_url = v.get('hdplay') or v.get('play')
                     logger.info(f"[OK] TikWM OK - pakai HD URL untuk video (attempt {attempt})")
-                cover_url = v.get('origin_cover') or v.get('cover')
-                title     = v.get('title', 'audio')
-                logger.info(f"[IMG] TikWM cover_url: {cover_url[:80] if cover_url else 'NONE'}")
+                # Coba origin_cover dulu, fallback ke cover biasa
+                origin_cover = v.get('origin_cover')
+                cover_plain  = v.get('cover')
+                cover_url    = origin_cover or cover_plain
+                title        = v.get('title', 'audio')
+                logger.info(f"[IMG] TikWM origin_cover: {origin_cover[:80] if origin_cover else 'NONE'}")
+                logger.info(f"[IMG] TikWM cover: {cover_plain[:80] if cover_plain else 'NONE'}")
                 return video_url, cover_url, title
             else:
                 logger.warning(f"[WARN] TikWM code={data.get('code')} msg={data.get('msg')} (attempt {attempt})")
@@ -565,7 +569,6 @@ def process_mp3_pipeline(url, title, out_tmpl, progress_cb=None):
 @app.route('/')
 def index():
     return send_file('vinder.html')
-
 
 
 @app.route('/api/search', methods=['POST'])
@@ -968,19 +971,31 @@ def fast_mp3_api():
         import tempfile
 
         # ── Step 1: Download cover dulu (sinkron, cepat < 1 detik) ──
+        # Coba beberapa URL cover dengan header minimal (TikTok CDN signed URL sensitif)
         cover_raw = None
-        if cover_url:
-            try:
-                cr = session.get(cover_url, timeout=10, headers=TIKTOK_HEADERS)
-                logger.info(f"[IMG] Cover fetch status: {cr.status_code}")
-                cr.raise_for_status()
-                if len(cr.content) > 1000:
-                    cover_raw = cr.content
-                    logger.info(f"[IMG] Cover downloaded ({len(cover_raw)//1024}KB)")
-                else:
-                    logger.warning(f"[WARN] Cover content terlalu kecil: {len(cr.content)} bytes")
-            except Exception as e:
-                logger.warning(f"[WARN] Gagal fetch cover ({type(e).__name__}): {e}")
+        cover_candidates = [cover_url] if cover_url else []
+
+        for cand_url in cover_candidates:
+            if not cand_url:
+                continue
+            # Coba tanpa header dulu (beberapa CDN malah reject kalau ada Referer/UA TikTok)
+            for hdrs in [{}, TIKTOK_HEADERS]:
+                try:
+                    cr = session.get(cand_url, timeout=10, headers=hdrs, allow_redirects=True)
+                    logger.info(f"[IMG] Cover fetch status: {cr.status_code} size: {len(cr.content)} bytes")
+                    if cr.status_code == 200 and len(cr.content) > 500:
+                        cover_raw = cr.content
+                        logger.info(f"[IMG] Cover downloaded OK ({len(cover_raw)//1024}KB)")
+                        break
+                    else:
+                        logger.warning(f"[WARN] Cover fetch gagal: status={cr.status_code} size={len(cr.content)}")
+                except Exception as e:
+                    logger.warning(f"[WARN] Cover fetch error ({type(e).__name__}): {e}")
+            if cover_raw:
+                break
+
+        if not cover_raw:
+            logger.warning("[WARN] Tidak ada cover untuk di-embed")
 
         # ── Step 2: Pipe audio CDN -> ffmpeg -> encode MP3 ke tmp file ──
         audio_headers = TIKTOK_HEADERS.copy()
@@ -1061,8 +1076,7 @@ def fast_mp3_api():
                 logger.info(f"[IMG] Cover embed OK ({len(thumb_bytes)//1024}KB)")
             except Exception as e:
                 logger.warning(f"[WARN] Cover embed gagal: {e}")
-        else:
-            logger.warning("[WARN] Tidak ada cover untuk di-embed")
+
 
         # ── Step 4: Stream MP3 ke browser lalu hapus tmp ──
         filename = f"[Vinder].{safe_filename(final_title)}.mp3"
