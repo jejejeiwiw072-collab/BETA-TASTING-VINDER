@@ -1245,20 +1245,51 @@
   /* ===== BACKGROUND MP3 SYSTEM ===== */
   // Pakai /api/mp3_progress (SSE) + /api/get_mp3_file sesuai backend
 
-  function startMp3Background(url, title) {
+  async function startMp3Background(url, title) {
     const bubble = createBubble(title, true);
     const filename = '[Vinder].' + title.replace(/[\\/:\*?"<>|]/g, '').replace(/[#@]\S*/g, '').replace(/\s+/g, ' ').trim().slice(0, 60) + '.mp3';
-    const dlUrl = `/api/fast_mp3?url=${encodeURIComponent(url)}&title=${encodeURIComponent(title)}`;
 
-    // Trigger download
-    const a = document.createElement('a');
-    a.href = dlUrl;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    // Fetch cover dari browser (browser tidak kena block CDN TikTok)
+    let coverB64 = null;
+    const coverUrl = currentPreviewData && currentPreviewData.cover;
+    if (coverUrl) {
+      try {
+        const imgResp = await fetch(coverUrl);
+        if (imgResp.ok) {
+          const blob = await imgResp.blob();
+          coverB64 = await new Promise((res) => {
+            const reader = new FileReader();
+            reader.onloadend = () => res(reader.result.split(',')[1]);
+            reader.readAsDataURL(blob);
+          });
+          console.log('[Cover] Berhasil fetch, size:', coverB64.length);
+        }
+      } catch (e) {
+        console.warn('[Cover] Fetch gagal:', e);
+      }
+    }
 
-    setTimeout(() => bubble.setSuccess(), 1500);
+    // POST ke server dengan cover base64
+    try {
+      const resp = await fetch('/api/fast_mp3', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, title, cover_b64: coverB64 }),
+      });
+      if (!resp.ok) throw new Error('Server error ' + resp.status);
+      const blob = await resp.blob();
+      const objUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(objUrl), 5000);
+      bubble.setSuccess();
+    } catch (e) {
+      console.error('[MP3] Download error:', e);
+    }
   }
 
   /* ===== DOWNLOAD BUBBLE (overwrite createBubble buat support MP3 bg) ===== */
