@@ -562,10 +562,10 @@ def process_mp3_pipeline(url, title, out_tmpl, progress_cb=None):
 # ROUTES
 # =============================================================================
 
-
 @app.route('/')
 def index():
     return send_file('vinder.html')
+
 
 
 @app.route('/api/search', methods=['POST'])
@@ -971,13 +971,16 @@ def fast_mp3_api():
         cover_raw = None
         if cover_url:
             try:
-                cr = session.get(cover_url, timeout=10)
+                cr = session.get(cover_url, timeout=10, headers=TIKTOK_HEADERS)
+                logger.info(f"[IMG] Cover fetch status: {cr.status_code}")
                 cr.raise_for_status()
                 if len(cr.content) > 1000:
                     cover_raw = cr.content
                     logger.info(f"[IMG] Cover downloaded ({len(cover_raw)//1024}KB)")
+                else:
+                    logger.warning(f"[WARN] Cover content terlalu kecil: {len(cr.content)} bytes")
             except Exception as e:
-                logger.warning(f"[WARN] Gagal fetch cover: {e}")
+                logger.warning(f"[WARN] Gagal fetch cover ({type(e).__name__}): {e}")
 
         # ── Step 2: Pipe audio CDN -> ffmpeg -> encode MP3 ke tmp file ──
         audio_headers = TIKTOK_HEADERS.copy()
