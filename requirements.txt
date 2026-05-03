@@ -4,3 +4,4 @@ yt-dlp
 requests
 gevent
 gunicorn
+mutagen
