@@ -909,17 +909,22 @@ def get_mp3_api():
 
 
 
-@app.route('/api/fast_mp3')
+@app.route('/api/fast_mp3', methods=['GET', 'POST'])
 def fast_mp3_api():
     """
     FAST MP3 - pipe CDN -> ffmpeg encode MP3 beneran -> embed cover via mutagen.
-    - Output: MP3 valid (bukan MP4 nyamar)
-    - Cover: JPEG 500x500 embedded sebagai ID3 APIC tag
-    - Zero temp file untuk audio (pipe langsung)
-    - Cover pakai /tmp kecil sementara lalu dihapus
+    POST: { url, title, cover_b64 } - cover dikirim dari browser (bypass CDN block)
+    GET:  ?url=&title= - tanpa cover (legacy)
     """
-    tiktok_url = request.args.get('url', '').strip()
-    title      = request.args.get('title', 'audio')
+    if request.method == 'POST':
+        data       = request.get_json(force=True) or {}
+        tiktok_url = data.get('url', '').strip()
+        title      = data.get('title', 'audio')
+        cover_b64  = data.get('cover_b64')  # base64 string dari browser
+    else:
+        tiktok_url = request.args.get('url', '').strip()
+        title      = request.args.get('title', 'audio')
+        cover_b64  = None
 
     if not tiktok_url:
         return "URL Kosong", 400
@@ -970,41 +975,16 @@ def fast_mp3_api():
 
         import tempfile
 
-        # ── Step 1: Download cover via TikWM cover endpoint (bypass CDN block) ──
+        # ── Step 1: Cover dari browser (sudah di-fetch di frontend, bypass CDN block) ──
         cover_raw = None
-
-        def fetch_cover_tikwm(tiktok_url_or_id):
-            """Ambil cover dari TikWM /video/cover/{id}.jpeg — tidak kena block CDN TikTok."""
-            import re
-            # Extract video ID dari URL
-            match = re.search(r'/video/(\d+)', tiktok_url_or_id)
-            if not match:
-                return None
-            vid_id = match.group(1)
-            tikwm_cover = f"https://www.tikwm.com/video/cover/{vid_id}.jpeg"
-            logger.info(f"[IMG] Coba TikWM cover endpoint: {tikwm_cover}")
+        if cover_b64:
             try:
-                cr = session.get(tikwm_cover, timeout=10, allow_redirects=True)
-                logger.info(f"[IMG] TikWM cover status: {cr.status_code} size: {len(cr.content)} bytes")
-                if cr.status_code == 200 and len(cr.content) > 500:
-                    return cr.content
+                import base64
+                cover_raw = base64.b64decode(cover_b64)
+                logger.info(f"[IMG] Cover dari browser: {len(cover_raw)//1024}KB")
             except Exception as e:
-                logger.warning(f"[WARN] TikWM cover endpoint error: {e}")
-            return None
-
-        if is_tiktok:
-            cover_raw = fetch_cover_tikwm(tiktok_url)
-
-        # Fallback: coba cover_url langsung kalau TikWM cover gagal
-        if not cover_raw and cover_url:
-            try:
-                cr = session.get(cover_url, timeout=10, allow_redirects=True)
-                logger.info(f"[IMG] Fallback cover status: {cr.status_code} size: {len(cr.content)} bytes")
-                if cr.status_code == 200 and len(cr.content) > 500:
-                    cover_raw = cr.content
-            except Exception as e:
-                logger.warning(f"[WARN] Fallback cover error: {e}")
-
+                logger.warning(f"[WARN] Decode cover_b64 gagal: {e}")
+        
         if not cover_raw:
             logger.warning("[WARN] Tidak ada cover untuk di-embed")
 
@@ -1123,7 +1103,6 @@ def fast_mp3_api():
     except Exception as e:
         logger.error(f"fast_mp3 error: {e}")
         return f"Error: {str(e)}", 500
-
 
 # =============================================================================
 # MAIN
