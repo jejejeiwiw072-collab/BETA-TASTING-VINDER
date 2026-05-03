@@ -438,8 +438,8 @@ def embed_cover(mp3_path, cover_path):
             if os.path.exists(p):
                 try:
                     os.remove(p)
-            except Exception:
-                pass
+                except Exception:
+                    pass
 
 
 def get_tiktok_audio_url(tiktok_url):
