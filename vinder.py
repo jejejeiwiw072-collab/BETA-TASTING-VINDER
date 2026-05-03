@@ -389,20 +389,20 @@ def download_cover(cover_url, cover_path):
 
 def embed_cover(mp3_path, cover_path):
     """
-    Embed cover art ke file MP3 via ffmpeg.
-    - Resize cover ke 500x500 (standar ID3) biar tidak bengkak
-    - Embed sebagai JPEG attachment bukan video stream (fix preview Google)
+    Embed cover art ke file MP3 via mutagen (ID3 APIC tag langsung).
+    - Resize cover ke 500x500 JPEG via ffmpeg
+    - Embed sebagai ID3 APIC frame (pure JPEG still, bukan video stream)
+    - Output tetap MP3 container beneran, bukan MP4 nyamar
     """
-    tmp_path  = mp3_path + '.tmp'
     thumb_path = cover_path + '.thumb.jpg'
     try:
-        # Step 1: resize cover ke 500x500 JPEG quality 85
+        # Step 1: resize cover ke 500x500 JPEG via ffmpeg
         subprocess.run(
             [
                 'ffmpeg', '-y',
                 '-i', cover_path,
                 '-vf', 'scale=500:500:force_original_aspect_ratio=decrease,pad=500:500:(ow-iw)/2:(oh-ih)/2',
-                '-q:v', '6',   # JPEG quality ~85 (skala 2-31, makin kecil makin bagus)
+                '-q:v', '6',
                 thumb_path,
             ],
             check=True,
@@ -410,36 +410,36 @@ def embed_cover(mp3_path, cover_path):
             timeout=15,
         )
 
-        # Step 2: embed thumbnail ke MP3 sebagai ID3 APIC frame (pure JPEG, bukan video stream)
-        subprocess.run(
-            [
-                'ffmpeg', '-y',
-                '-i', mp3_path,
-                '-i', thumb_path,
-                '-map', '0:a',
-                '-map', '1:v',
-                '-c:a', 'copy',
-                '-c:v', 'copy',          # copy JPEG as-is, bukan encode ulang ke mjpeg
-                '-id3v2_version', '3',
-                '-metadata:s:v', 'title=Album cover',
-                '-metadata:s:v', 'comment=Cover (front)',
-                '-disposition:v', 'attached_pic',  # tandai sebagai attached picture, BUKAN video stream
-                tmp_path,
-            ],
-            check=True,
-            capture_output=True,
-            timeout=30,
-        )
-        os.replace(tmp_path, mp3_path)
-        logger.info("[IMG] Cover art berhasil di-embed ke MP3 (500x500)")
+        # Step 2: embed via mutagen ID3 APIC tag langsung ke MP3
+        # Mutagen tulis ID3 tag native - tidak ada container MP4, tidak ada video stream
+        from mutagen.id3 import ID3, APIC, error as ID3Error
+
+        with open(thumb_path, 'rb') as img_f:
+            img_data = img_f.read()
+
+        try:
+            tags = ID3(mp3_path)
+        except ID3Error:
+            tags = ID3()
+
+        tags.add(APIC(
+            encoding=3,          # UTF-8
+            mime='image/jpeg',
+            type=3,              # Cover (front)
+            desc='Cover',
+            data=img_data,
+        ))
+        tags.save(mp3_path, v2_version=3)
+        logger.info(f"[IMG] Cover art di-embed via ID3 APIC ({len(img_data)//1024}KB)")
+
     except Exception as e:
         logger.warning(f"[WARN] Cover embed gagal (tidak fatal): {e}")
-        for p in [tmp_path, thumb_path]:
-            if os.path.exists(p):
-                try:
-                    os.remove(p)
-                except Exception:
-                    pass
+    finally:
+        if os.path.exists(thumb_path):
+            try:
+                os.remove(thumb_path)
+            except Exception:
+                pass
 
 
 def get_tiktok_audio_url(tiktok_url):
