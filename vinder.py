@@ -966,23 +966,19 @@ def fast_mp3_api():
         if not audio_url:
             return "Gagal: tidak bisa ambil URL audio", 500
 
-        # ── Step 1: Download cover di thread terpisah (paralel dengan encode) ──
-        import threading, tempfile
-        cover_data = [None]  # list biar bisa dimodif dari thread
+        import tempfile
 
-        def fetch_cover():
-            if not cover_url:
-                return
+        # ── Step 1: Download cover dulu (sinkron, cepat < 1 detik) ──
+        cover_raw = None
+        if cover_url:
             try:
                 cr = session.get(cover_url, timeout=10)
                 cr.raise_for_status()
                 if len(cr.content) > 1000:
-                    cover_data[0] = cr.content
+                    cover_raw = cr.content
+                    logger.info(f"[IMG] Cover downloaded ({len(cover_raw)//1024}KB)")
             except Exception as e:
                 logger.warning(f"[WARN] Gagal fetch cover: {e}")
-
-        cover_thread = threading.Thread(target=fetch_cover, daemon=True)
-        cover_thread.start()
 
         # ── Step 2: Pipe audio CDN -> ffmpeg -> encode MP3 ke tmp file ──
         audio_headers = TIKTOK_HEADERS.copy()
@@ -1001,7 +997,7 @@ def fast_mp3_api():
             '-acodec', 'libmp3lame',
             '-ab', '128k',
             '-ar', '44100',
-            '-f', 'mp3',       # force MP3 container
+            '-f', 'mp3',
             tmp_mp3,
         ]
         proc = subprocess.Popen(
@@ -1025,13 +1021,10 @@ def fast_mp3_api():
             err = proc.stderr.read().decode(errors='ignore')[-300:]
             raise RuntimeError(f"ffmpeg encode gagal: {err}")
 
-        # ── Step 3: Tunggu cover selesai lalu embed via mutagen ──
-        cover_thread.join(timeout=10)
-
-        if cover_data[0]:
+        # ── Step 3: Embed cover via mutagen (cover_raw sudah pasti ada/tidak) ──
+        if cover_raw:
             try:
                 from mutagen.id3 import ID3, APIC, error as ID3Error
-                import io
 
                 # Resize cover ke 500x500 via ffmpeg in-memory
                 resize_proc = subprocess.run(
@@ -1044,11 +1037,11 @@ def fast_mp3_api():
                         '-vcodec', 'mjpeg',
                         'pipe:1',
                     ],
-                    input=cover_data[0],
+                    input=cover_raw,
                     capture_output=True,
                     timeout=10,
                 )
-                thumb_bytes = resize_proc.stdout if resize_proc.returncode == 0 and resize_proc.stdout else cover_data[0]
+                thumb_bytes = resize_proc.stdout if resize_proc.returncode == 0 and resize_proc.stdout else cover_raw
 
                 try:
                     tags = ID3(tmp_mp3)
@@ -1066,6 +1059,8 @@ def fast_mp3_api():
                 logger.info(f"[IMG] Cover embed OK ({len(thumb_bytes)//1024}KB)")
             except Exception as e:
                 logger.warning(f"[WARN] Cover embed gagal: {e}")
+        else:
+            logger.warning("[WARN] Tidak ada cover untuk di-embed")
 
         # ── Step 4: Stream MP3 ke browser lalu hapus tmp ──
         filename = f"[Vinder].{safe_filename(final_title)}.mp3"
