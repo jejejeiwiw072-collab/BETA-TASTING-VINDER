@@ -630,6 +630,45 @@ def search_videos_api():
         return jsonify({"status": "error", "msg": str(e)})
 
 
+# ── Pre-fetch cache untuk fast_mp3 ──
+# Key: resolved tiktok URL, Value: {'audio_url', 'title', 'ts'}
+import threading as _threading
+_mp3_cache      = {}
+_mp3_cache_lock = _threading.Lock()
+_MP3_CACHE_TTL  = 120   # detik - URL CDN TikTok biasanya valid 2-5 menit
+
+
+def _cache_set(url, audio_url, title):
+    with _mp3_cache_lock:
+        _mp3_cache[url] = {'audio_url': audio_url, 'title': title, 'ts': time.time()}
+
+
+def _cache_get(url):
+    with _mp3_cache_lock:
+        entry = _mp3_cache.get(url)
+        if entry and (time.time() - entry['ts']) < _MP3_CACHE_TTL:
+            return entry
+        if entry:
+            del _mp3_cache[url]   # expired
+    return None
+
+
+def _cache_prefetch_mp3(tiktok_url):
+    """Jalankan di background thread saat preview muncul."""
+    try:
+        is_short = 'vt.tiktok.com' in tiktok_url or 'vm.tiktok.com' in tiktok_url
+        resolved = resolve_tiktok_url(tiktok_url) if is_short else tiktok_url
+        # Cek kalau udah ada di cache
+        if _cache_get(resolved):
+            return
+        vid_url, _, ttitle = get_meta_via_tikwm(resolved, for_audio=True)
+        if vid_url:
+            _cache_set(resolved, vid_url, ttitle or 'audio')
+            logger.info(f"[CACHE] Pre-fetch selesai: {resolved[-40:]}")
+    except Exception as e:
+        logger.warning(f"[CACHE] Pre-fetch gagal: {e}")
+
+
 # Platform yang didukung - FIX agar URL asing tidak nyasar ke static files
 SUPPORTED_PLATFORMS = [
     'tiktok.com', 'vt.tiktok.com', 'vm.tiktok.com',
@@ -674,7 +713,7 @@ def download_url_api():
             resp = session.get(f"https://www.tikwm.com/api/?url={url_input}", timeout=15).json()
             if resp.get('code') == 0:
                 v = resp['data']
-                return jsonify({
+                result = {
                     "status":   "success",
                     "title":    v.get('title', 'TikTok Video'),
                     "cover":    v.get('origin_cover') or v.get('cover'),
@@ -683,8 +722,16 @@ def download_url_api():
                     "size":     f"{v.get('size', 0) / 1024 / 1024:.2f}MB",
                     "play":     v.get('play'),
                     "hdplay":   v.get('hdplay'),
-                    # 'music' field sengaja dihapus - pakai hdplay/play untuk audio
-                })
+                }
+
+                # Pre-fetch audio URL di background — siap sebelum user klik MP3
+                audio_url_pre = v.get('wmplay') or v.get('play')
+                title_pre     = v.get('title', 'audio')
+                if audio_url_pre:
+                    _cache_set(url_input, audio_url_pre, title_pre)
+                    logger.info(f"[CACHE] Pre-cached dari preview response")
+
+                return jsonify(result)
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url_input, download=False)
@@ -942,41 +989,26 @@ def fast_mp3_api():
         final_title = title
 
         if is_tiktok:
-            # OPTIMASI 1+2: resolve short URL + TikWM paralel
-            resolved = [tiktok_url]
-            tikwm_result = [None]
+            # Resolve short URL dulu
+            if is_short:
+                tiktok_url = resolve_tiktok_url(tiktok_url)
 
-            def resolve_worker():
-                if is_short:
-                    resolved[0] = resolve_tiktok_url(tiktok_url)
-
-            def tikwm_worker():
-                # TikWM butuh resolved URL - tunggu resolve dulu
-                resolve_thread.join(timeout=5)
-                vid, _, ttitle = get_meta_via_tikwm(resolved[0], for_audio=True)
-                tikwm_result[0] = (vid, ttitle)
-
-            resolve_thread = threading.Thread(target=resolve_worker, daemon=True)
-            resolve_thread.start()
-
-            # Kalau bukan short URL, TikWM bisa langsung jalan paralel
-            if not is_short:
-                tikwm_thread = threading.Thread(target=tikwm_worker, daemon=True)
-                tikwm_thread.start()
-                tikwm_thread.join(timeout=10)
+            # CACHE HIT: audio URL sudah siap dari pre-fetch saat preview
+            cached = _cache_get(tiktok_url)
+            if cached:
+                audio_url   = cached['audio_url']
+                video_url   = cached['audio_url']
+                final_title = cached['title']
+                logger.info(f"[CACHE] HIT - skip TikWM call")
             else:
-                # Short URL: resolve dulu, baru TikWM
-                resolve_thread.join(timeout=5)
-                tiktok_url_resolved = resolved[0]
-                vid, _, ttitle = get_meta_via_tikwm(tiktok_url_resolved, for_audio=True)
-                tikwm_result[0] = (vid, ttitle)
-
-            if tikwm_result[0]:
-                video_url, tikwm_title = tikwm_result[0]
-                audio_url   = video_url
+                # CACHE MISS: fetch TikWM sekarang
+                logger.info(f"[CACHE] MISS - fetch TikWM")
+                vid_url, _, tikwm_title = get_meta_via_tikwm(tiktok_url, for_audio=True)
+                video_url   = vid_url
+                audio_url   = vid_url
                 final_title = tikwm_title or title
-
-            tiktok_url = resolved[0]  # pakai resolved URL untuk frame extract
+                if vid_url:
+                    _cache_set(tiktok_url, vid_url, final_title)
 
         else:
             # Non-TikTok: tetap pakai yt-dlp
@@ -1070,7 +1102,7 @@ def fast_mp3_api():
             ['ffmpeg', '-y', '-i', 'pipe:0', '-vn',
              '-acodec', 'libmp3lame', '-ab', '128k', '-ar', '44100',
              '-f', 'mp3', tmp_mp3],
-            stdin=subprocess.PIPE,
+              stdin=subprocess.PIPE,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
         )
