@@ -470,7 +470,7 @@
     .audio-card {
       width: 100%;
       background: var(--card);
-      border: 1px solid #473c76;
+      border: 1px solid #d990ff;
       box-shadow: 0 0 20px rgba(66,48,143,0.2);
       border-radius: 14px;
       overflow: hidden;
@@ -748,9 +748,9 @@
       font-size: 12px;
       color: var(--muted2);
     }
-            .upload-preview img { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; }
+        .upload-preview img { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; }
     .upload-preview span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .upload-preview button {
+          .upload-preview button {
       width: auto;
       padding: 4px 8px;
       font-size: 12px;
@@ -894,6 +894,37 @@
     ::-webkit-scrollbar { width: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 2px; }
+
+    /* ===== TICKER ===== */
+    .ticker-wrap {
+      overflow: hidden;
+      width: 80%;
+      margin: 0 auto 14px;
+      padding: 6px 0;
+      -webkit-mask-image: linear-gradient(to right, transparent 0%, black 18%, black 82%, transparent 100%);
+      mask-image: linear-gradient(to right, transparent 0%, black 18%, black 82%, transparent 100%);
+    }
+    .ticker-track {
+      display: flex;
+      width: max-content;
+      animation: ticker-scroll 5s linear infinite;
+      will-change: transform;
+    }
+    .ticker-item {
+      padding: 0 28px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--muted2);
+      white-space: nowrap;
+    }
+    .ticker-item.c1 { color: #60a5fa; }
+    .ticker-item.c2 { color: #c084fc; }
+    .ticker-item.c3 { color: #4ade80; }
+    @keyframes ticker-scroll {
+      0%   { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
   </style>
 </head>
 <body>
@@ -902,7 +933,7 @@
   <nav class="navbar">
     <div class="navbar-left">
       <span class="version-badge">v1.8</span>
-      <img src="20260424_191010.jpg" style="width: 40px; height: 40px;">
+      <img src="IconT.png" style="width: 40px; height: 40px;">
       <span class="navbar-brand">Vinder</span>
     </div>
     <div class="navbar-right">
@@ -911,7 +942,7 @@
   </nav>
 
   <!-- ===== MAIN ===== -->
-  <div class="main-content">
+  <div class="main-content"> 
 
     <!-- CARD: Cari Video -->
     <div class="card">
@@ -994,12 +1025,25 @@
       <div class="status-txt" id="url-status"></div>
     </div>
 
+    <!-- TICKER -->
+    <div class="ticker-wrap">
+      <div class="ticker-track">
+        <span class="ticker-item c1">tanpa watermark</span>
+        <span class="ticker-item c3">gratis 100%</span>
+        <span class="ticker-item c2">tanpa iklan</span>
+        <span class="ticker-item c1">tanpa watermark</span>
+        <span class="ticker-item c3">gratis 100%</span>
+        <span class="ticker-item c2">tanpa iklan</span>
+      </div>
+    </div>
+
     <!-- AUDIO CARD -->
     <div class="audio-card">
-      <img src="new3.png" alt="Audio Downloader Preview">
+      <img src="IconB.png" alt="Audio Downloader Preview">
       <div class="audio-card-content">
-        <div class="audio-card-title">✅ <span style="color:#9333ea;">MP3</span> Downloader Aktif</div>
-        <div class="audio-card-desc">Pilih format MP3 lalu download — audio langsung tersimpan ke perangkat kamu.</div>
+        <div class="audio-card-title">COMING SOON <span style="color: #f50fff;">multi </span></span> platform</div>
+        <div class="audio-card-desc">SEGERA HADIR : unduh video/audio dengan berbagai platform seperti YouTube, tiktok ,Instragram, Facebook ,
+Spotify secara cepat dan aman.</div>
       </div>
     </div>
 
@@ -1011,7 +1055,7 @@
   <!-- ===== FAB GROUP (Donate + Feedback) ===== -->
   <div class="fab-group">
     <button class="fab-donate" onclick="openDonateModal()">
-      <span class="donate-icon">☕</span>
+      <span class="donate-icon">☕
     </button>
     <button class="fab-feedback" onclick="openFeedbackModal()" title="Kirim Saran">
       ✉️
@@ -1249,6 +1293,7 @@
     const bubble = createBubble(title, true);
     const filename = '[Vinder].' + title.replace(/[\/:\*?"<>|]/g, '').replace(/[#@]\S*/g, '').replace(/\s+/g, ' ').trim().slice(0, 60) + '.mp3';
 
+    
     // POST ke server - cover diambil dari frame tengah video di server
     try {
       const resp = await fetch('/api/fast_mp3', {
@@ -1286,7 +1331,7 @@
       <div class="dl-bubble-icon loading">${isBg ? '🎵' : '⬇️'}</div>
       <div class="dl-bubble-text">
         <div class="dl-bubble-label"></div>
-               <div class="dl-bubble-sub">${subText}</div>
+        <div class="dl-bubble-sub">${subText}</div>
         <div class="dl-progress"><div class="${barClass}" id="${barId}"></div></div>
       </div>
       <button class="dl-close" onclick="closeBubble(this)">✕</button>
