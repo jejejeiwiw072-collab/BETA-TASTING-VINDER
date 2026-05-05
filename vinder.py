@@ -1612,6 +1612,94 @@ def mp4_info_api():
 
 
 # =============================================================================
+# DEBUG ENDPOINT — HAPUS SETELAH SELESAI DEBUG
+# =============================================================================
+
+@app.route('/api/debug_fb', methods=['GET', 'POST'])
+def debug_fb():
+    """
+    Debug endpoint untuk lihat raw yt-dlp output dari Facebook URL.
+    Usage: GET /api/debug_fb?url=https://v.facebook.com/share/r/...
+    HAPUS endpoint ini setelah selesai debugging!
+    """
+    if request.method == 'POST':
+        data = request.get_json(force=True) or {}
+        url  = data.get('url', '').strip()
+    else:
+        url = request.args.get('url', '').strip()
+
+    if not url:
+        return jsonify({"error": "url param kosong"}), 400
+
+    result = {"original_url": url}
+
+    # Step 1: coba follow redirect manual
+    try:
+        import urllib.request as _req
+        r = _req.urlopen(
+            _req.Request(url, headers={'User-Agent': TIKTOK_UA}),
+            timeout=8
+        )
+        result["resolved_url"] = r.url
+        result["redirect_ok"] = (r.url != url)
+        url_for_ytdlp = r.url
+    except Exception as e:
+        result["redirect_error"] = str(e)
+        url_for_ytdlp = url
+
+    # Step 2: yt-dlp extract_info
+    try:
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'noplaylist': True,
+            'user_agent': TIKTOK_UA,
+            'http_headers': DEFAULT_HEADERS,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url_for_ytdlp, download=False)
+
+        # Field-field penting untuk preview
+        fields = [
+            'title', 'uploader', 'channel', 'creator', 'uploader_id',
+            'uploader_url', 'page_name', 'duration', 'duration_string',
+            'tbr', 'vbr', 'abr', 'filesize', 'filesize_approx',
+            'thumbnail', 'extractor', 'webpage_url', 'description'
+        ]
+        result["info_fields"] = {k: info.get(k) for k in fields}
+
+        # Summary format (10 format pertama)
+        formats = info.get('formats') or []
+        result["formats_count"] = len(formats)
+        result["formats_sample"] = [
+            {
+                "format_id": f.get('format_id'),
+                "ext": f.get('ext'),
+                "vcodec": f.get('vcodec'),
+                "acodec": f.get('acodec'),
+                "height": f.get('height'),
+                "tbr": f.get('tbr'),
+                "vbr": f.get('vbr'),
+                "abr": f.get('abr'),
+                "filesize": f.get('filesize'),
+                "filesize_approx": f.get('filesize_approx'),
+                "duration": f.get('duration'),
+            }
+            for f in formats[-10:]  # 10 format terakhir (biasanya yang terbaik)
+        ]
+
+        # Thumbnails
+        thumbnails = info.get('thumbnails') or []
+        result["thumbnails_count"] = len(thumbnails)
+        result["thumbnails_sample"] = thumbnails[:3]
+
+    except Exception as e:
+        result["ytdlp_error"] = str(e)
+
+    return jsonify(result), 200
+
+
+# =============================================================================
 # MAIN
 # =============================================================================
 
