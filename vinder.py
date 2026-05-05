@@ -1467,23 +1467,30 @@ def mp4_info_api():
             qualities = ['best'] + qualities
 
         # ── Durasi ──
+        # Facebook sering return duration=None di info root, cari di formats
         duration_s = int(info.get('duration') or 0)
+        if not duration_s and formats:
+            for fmt in formats:
+                d = fmt.get('duration')
+                if d and int(d) > 0:
+                    duration_s = int(d)
+                    break
         if duration_s > 0:
             m, s = divmod(duration_s, 60)
             duration_str = f"{m}m{s:02d}s"
         else:
             duration_str = '-'
 
-        # ── Ukuran file — estimasi dari format terbaik ──
+        # ── Ukuran file ──
         size_bytes = 0
         try:
-            # Ambil filesize dari format video+audio terbaik
+            # Lapis 1: filesize/filesize_approx dari format video
             for fmt in reversed(formats):
                 fs = fmt.get('filesize') or fmt.get('filesize_approx') or 0
                 if fs and fmt.get('vcodec') not in (None, 'none'):
                     size_bytes = fs
                     break
-            # Fallback: total dari format terpisah (video + audio)
+            # Lapis 2: video + audio terpisah
             if not size_bytes:
                 v_size = next((
                     f.get('filesize') or f.get('filesize_approx') or 0
@@ -1496,9 +1503,17 @@ def mp4_info_api():
                     if f.get('acodec') not in (None, 'none') and f.get('vcodec') in (None, 'none')
                 ), 0)
                 size_bytes = (v_size or 0) + (a_size or 0)
-            # Fallback: info.filesize_approx
+            # Lapis 3: info root
             if not size_bytes:
                 size_bytes = info.get('filesize_approx') or info.get('filesize') or 0
+            # Lapis 4 (Facebook fallback): estimasi dari tbr × duration
+            # tbr = total bitrate dalam kbps
+            if not size_bytes and duration_s > 0:
+                tbr = info.get('tbr') or 0
+                if not tbr and formats:
+                    tbr = next((f.get('tbr') or 0 for f in reversed(formats) if f.get('tbr')), 0)
+                if tbr:
+                    size_bytes = int(tbr * 1000 / 8 * duration_s)
         except Exception:
             size_bytes = 0
 
@@ -1510,6 +1525,7 @@ def mp4_info_api():
             size_str = 'N/A'
 
         # ── Author — hindari hostname sebagai nama ──
+        import re as _re
         raw_author = (
             info.get('uploader') or
             info.get('channel') or
@@ -1517,9 +1533,11 @@ def mp4_info_api():
             info.get('uploader_id') or
             'Unknown'
         )
-        # Kalau isinya URL / domain (ada titik + TLD), pakai nama platform
-        import re as _re
-        if _re.search(r'https?://|www\.|\.com|\.net|\.org', raw_author or ''):
+        # Hanya replace kalau string DIMULAI dengan http/www,
+        # atau seluruhnya berupa angka (uploader_id numerik FB)
+        is_url_like = _re.match(r'^(https?://|www\.)', raw_author or '')
+        is_numeric  = _re.match(r'^\d+$', raw_author or '')
+        if is_url_like or is_numeric:
             platform_names = {
                 'youtube': 'YouTube', 'instagram': 'Instagram',
                 'facebook': 'Facebook', 'tiktok': 'TikTok'
