@@ -1447,6 +1447,21 @@ def mp4_info_api():
             'user_agent':  TIKTOK_UA,
             'http_headers': DEFAULT_HEADERS,
         }
+        # Facebook share/redirect URL — follow redirect ke URL asli dulu
+        if platform == 'facebook' and any(x in url for x in ['share/r/', 'share/v/', 'fb.watch', 'v.facebook.com']):
+            try:
+                import urllib.request as _req
+                _r = _req.urlopen(
+                    _req.Request(url, headers={'User-Agent': TIKTOK_UA}),
+                    timeout=8
+                )
+                resolved_fb_url = _r.url
+                if resolved_fb_url and 'facebook.com' in resolved_fb_url and resolved_fb_url != url:
+                    logger.info(f"[INFO] Facebook redirect resolved: {url[:60]} → {resolved_fb_url[:60]}")
+                    url = resolved_fb_url
+            except Exception as _e:
+                logger.warning(f"[WARN] Facebook redirect resolve gagal: {_e}, lanjut dengan URL asli")
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
@@ -1475,6 +1490,23 @@ def mp4_info_api():
                 if d and int(d) > 0:
                     duration_s = int(d)
                     break
+        # Fallback: parse dari duration_string jika ada (format "H:MM:SS" atau "M:SS")
+        if not duration_s:
+            dur_str_raw = info.get('duration_string') or ''
+            if dur_str_raw:
+                try:
+                    parts = dur_str_raw.strip().split(':')
+                    if len(parts) == 2:
+                        duration_s = int(parts[0]) * 60 + int(parts[1])
+                    elif len(parts) == 3:
+                        duration_s = int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+                except Exception:
+                    pass
+        # Fallback: cek dari entries (playlist/single entry)
+        if not duration_s:
+            entries = info.get('entries') or []
+            if entries:
+                duration_s = int(entries[0].get('duration') or 0)
         if duration_s > 0:
             m, s = divmod(duration_s, 60)
             duration_str = f"{m}m{s:02d}s"
@@ -1512,6 +1544,11 @@ def mp4_info_api():
                 tbr = info.get('tbr') or 0
                 if not tbr and formats:
                     tbr = next((f.get('tbr') or 0 for f in reversed(formats) if f.get('tbr')), 0)
+                # Fallback: vbr + abr kalau tbr tetap 0
+                if not tbr and formats:
+                    vbr = next((f.get('vbr') or 0 for f in reversed(formats) if f.get('vbr') and f.get('vcodec') not in (None, 'none')), 0)
+                    abr = next((f.get('abr') or 0 for f in reversed(formats) if f.get('abr') and f.get('acodec') not in (None, 'none')), 0)
+                    tbr = (vbr or 0) + (abr or 0)
                 if tbr:
                     size_bytes = int(tbr * 1000 / 8 * duration_s)
         except Exception:
@@ -1530,6 +1567,8 @@ def mp4_info_api():
             info.get('uploader') or
             info.get('channel') or
             info.get('creator') or
+            info.get('uploader_url') and None or  # skip uploader_url, itu URL bukan nama
+            info.get('page_name') or              # Facebook page name (kadang ada)
             info.get('uploader_id') or
             'Unknown'
         )
