@@ -470,11 +470,11 @@
     .audio-card {
       width: 100%;
       background: var(--card);
-      border: 1px solid #d990ff;
+      border: 1px solid #2b2b2b;
       box-shadow: 0 0 20px rgba(66,48,143,0.2);
       border-radius: 14px;
       overflow: hidden;
-      margin-top: 6px;
+      margin-top: 0;
     }
     .audio-card img {
       width: 100%;
@@ -748,9 +748,9 @@
       font-size: 12px;
       color: var(--muted2);
     }
-        .upload-preview img { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; }
+                .upload-preview img { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; }
     .upload-preview span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-          .upload-preview button {
+    .upload-preview button {
       width: auto;
       padding: 4px 8px;
       font-size: 12px;
@@ -895,6 +895,196 @@
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 2px; }
 
+    /* ===== FEATURES SECTION ===== */
+    .features-section {
+      padding: 28px 16px 0;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    .features-heading {
+      text-align: center;
+      font-family: 'Space Mono', monospace;
+      font-size: 22px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #60a5fa 0%, #c084fc 50%, #4ade80 100%);
+      background-size: 200% auto;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: elegant-move 6s ease infinite;
+      margin-bottom: 6px;
+      letter-spacing: -0.3px;
+    }
+
+    .features-sub {
+      text-align: center;
+      font-size: 13px;
+      color: var(--muted2);
+      margin-bottom: 20px;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 22px;
+    }
+
+    .feat-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      cursor: default;
+      transition: border-color 0.25s, box-shadow 0.25s, transform 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .feat-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+    }
+
+    .feat-card.glow-blue::before   { background: radial-gradient(circle at 50% 0%, rgba(37,99,235,0.18) 0%, transparent 70%); }
+    .feat-card.glow-purple::before { background: radial-gradient(circle at 50% 0%, rgba(147,51,234,0.18) 0%, transparent 70%); }
+    .feat-card.glow-green::before  { background: radial-gradient(circle at 50% 0%, rgba(74,222,128,0.15) 0%, transparent 70%); }
+    .feat-card.glow-amber::before  { background: radial-gradient(circle at 50% 0%, rgba(245,158,11,0.18) 0%, transparent 70%); }
+
+    .feat-card:hover { transform: translateY(-2px); }
+    .feat-card:hover::before { opacity: 1; }
+    .feat-card.glow-blue:hover   { border-color: rgba(37,99,235,0.6);  box-shadow: 0 0 22px rgba(37,99,235,0.2); }
+    .feat-card.glow-purple:hover { border-color: rgba(147,51,234,0.6); box-shadow: 0 0 22px rgba(147,51,234,0.2); }
+    .feat-card.glow-green:hover  { border-color: rgba(74,222,128,0.5); box-shadow: 0 0 22px rgba(74,222,128,0.15); }
+    .feat-card.glow-amber:hover  { border-color: rgba(245,158,11,0.5); box-shadow: 0 0 22px rgba(245,158,11,0.15); }
+
+    .feat-icon {
+      font-size: 24px;
+      line-height: 1;
+    }
+
+    .feat-title {
+      font-family: Sans-Serif;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: var(--text);
+    }
+
+    .feat-desc {
+      font-size: 12px;
+      color: var(--muted2);
+      line-height: 1.5;
+    }
+
+    /* ===== PLATFORM BADGES ===== */
+    .platform-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      margin-bottom: 28px;
+    }
+
+    .plat-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--card2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 5px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--muted2);
+      letter-spacing: 0.3px;
+    }
+
+    .plat-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* ===== FOOTER ===== */
+    .site-footer {
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 18px 16px 100px;
+      border-top: 1px solid var(--border);
+    }
+
+    .footer-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .footer-brand {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .footer-name {
+      font-family: 'Space Mono', monospace;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .footer-ver {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 0.5px;
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 6px;
+    }
+
+    .footer-link {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--muted2);
+      text-decoration: none;
+      background: #161616;
+      border: 1px solid var(--border);
+      padding: 5px 10px;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: 'DM Sans', sans-serif;
+    }
+
+    .footer-link:hover { color: var(--text); border-color: var(--border-bright); background: #1e1e1e; }
+    .footer-link.donate-link:hover { border-color: var(--donate); color: var(--donate); }
+
+    .footer-credit {
+      font-size: 11px;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    .footer-credit span {
+      font-family: 'Space Mono', monospace;
+      color: var(--muted2);
+    }
+
     /* ===== TICKER ===== */
     .ticker-wrap {
       overflow: hidden;
@@ -932,7 +1122,7 @@
   <!-- ===== NAVBAR ===== -->
   <nav class="navbar">
     <div class="navbar-left">
-      <span class="version-badge">v1.8</span>
+      <span class="version-badge">v1.9</span>
       <img src="IconT.png" style="width: 40px; height: 40px;">
       <span class="navbar-brand">Vinder</span>
     </div>
@@ -947,7 +1137,7 @@
     <!-- CARD: Cari Video -->
     <div class="card">
       <div class="card-header">
-        <div class="card-title">Cari Video</div>
+        <div class="card-title">Cari Video (tiktok)</div>
         <div class="res-trigger" id="triggerSearch">
           <button class="res-btn" onclick="togglePopup('popupSearch')">
             <span class="rainbow-text" id="labelSearch">HYPE v1.3</span>
@@ -1017,7 +1207,7 @@
       </div>
 
       <div class="input-wrapper">
-        <input id="dl-url" placeholder="https://vt.tiktok.com/" type="text"/>
+        <input id="dl-url" placeholder="tiktok/yt/ig/facebook/spotify" type="text"/>
         <span class="clear-btn" id="clear-dl-url" onclick="clearInput('dl-url')">✕</span>
       </div>
       <div id="url-preview-container"></div>
@@ -1025,36 +1215,95 @@
       <div class="status-txt" id="url-status"></div>
     </div>
 
-    <!-- TICKER -->
-    <div class="ticker-wrap">
-      <div class="ticker-track">
-        <span class="ticker-item c1">tanpa watermark</span>
-        <span class="ticker-item c3">gratis 100%</span>
-        <span class="ticker-item c2">tanpa iklan</span>
-        <span class="ticker-item c1">tanpa watermark</span>
-        <span class="ticker-item c3">gratis 100%</span>
-        <span class="ticker-item c2">tanpa iklan</span>
-      </div>
-    </div>
-
-    <!-- AUDIO CARD -->
+    <!-- MULTI PLATFORM CARD -->
     <div class="audio-card">
-      <img src="IconB.png" alt="Audio Downloader Preview">
+      <img src="IconB.png" alt="Multi Platform Downloader">
       <div class="audio-card-content">
-        <div class="audio-card-title">COMING SOON <span style="color: #f50fff;">multi </span></span> platform</div>
-        <div class="audio-card-desc">SEGERA HADIR : unduh video/audio dengan berbagai platform seperti YouTube, tiktok ,Instragram, Facebook ,
-Spotify secara cepat dan aman.</div>
+        <div class="audio-card-title">✅ <span style="color: #4ade80;">AKTIF</span> · Multi Platform</div>
+        <div class="audio-card-desc">Download video MP4 & audio MP3 dari YouTube, TikTok, Instagram, dan Facebook — cepat, gratis, tanpa watermark.</div>
       </div>
     </div>
 
   </div>
+
+  <!-- ===== FEATURES SECTION ===== -->
+  <section class="features-section">
+
+    <h2 class="features-heading">Cepat, Gratis, Tanpa Batas</h2>
+    <p class="features-sub">Semua yang kamu butuhkan, gratis selamanya</p>
+
+    <div class="features-grid">
+
+      <div class="feat-card glow-blue">
+        <div class="feat-icon">⚡</div>
+        <div class="feat-title">HYPE Engine</div>
+        <div class="feat-desc">Teknologi unduh generasi baru — resolusi tak terbatas, kecepatan penuh.</div>
+      </div>
+
+      <div class="feat-card glow-purple">
+        <div class="feat-icon">✨</div>
+        <div class="feat-title">No Watermark</div>
+        <div class="feat-desc">Video bersih tanpa logo atau tanda air dari platform manapun.</div>
+      </div>
+
+      <div class="feat-card glow-green">
+        <div class="feat-icon">🎵</div>
+        <div class="feat-title">MP3/MP4 Extract</div>
+        <div class="feat-desc">Ekstrak audio langsung ke MP3 berkualitas tinggi dari video apapun.</div>
+      </div>
+
+      <div class="feat-card glow-amber">
+        <div class="feat-icon">🚫</div>
+        <div class="feat-title">ALERGI IKLAN</div>
+        <div class="feat-desc">Langsung pakai tanpa daftar, tanpa akun, tanpa ribet.</div>
+      </div>
+
+    </div>
+
+    <div class="platform-badges">
+      <span class="plat-badge">
+        <span class="plat-dot" style="background:#000000;"></span>TikTok
+      </span>
+      <span class="plat-badge">
+        <span class="plat-dot" style="background:#ff0000;"></span>YouTube
+      </span>
+      <span class="plat-badge">
+        <span class="plat-dot" style="background:linear-gradient(135deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888);"></span>Instagram
+      </span>
+      <span class="plat-badge">
+        <span class="plat-dot" style="background:#1877f2;"></span>Facebook
+      </span>
+      <span class="plat-badge">
+        <span class="plat-dot" style="background:#1db954;"></span>Spotify
+      </span>
+    </div>
+
+  </section>
+
+  <!-- ===== FOOTER ===== -->
+  <footer class="site-footer">
+    <div class="footer-top">
+      <div class="footer-brand">
+        <div class="footer-name">zakdev_</div>
+        <div class="footer-ver">Vinder v1.9 · HYPE Engine</div>
+      </div>
+      <div class="footer-links">
+        <a class="footer-link" onclick="openFeedbackModal()">Feedback</a>
+        <a class="footer-link donate-link" onclick="openDonateModal()">Donate </a>
+        <a class="footer-link" href="#" onclick="showChangelog(); return false;">Changelog</a>
+      </div>
+    </div>
+    <div class="footer-credit">
+      Dibuat dengan 🌟 oleh <span>zakdev_</span> · Gratis untuk semua orang
+    </div>
+  </footer>
 
   <!-- ===== DOWNLOAD BUBBLES ===== -->
   <div id="dl-container"></div>
 
   <!-- ===== FAB GROUP (Donate + Feedback) ===== -->
   <div class="fab-group">
-    <button class="fab-donate" onclick="openDonateModal()">
+    <button class="fab-donate" onclick="openModal()">
       <span class="donate-icon">☕
     </button>
     <button class="fab-feedback" onclick="openFeedbackModal()" title="Kirim Saran">
@@ -1103,7 +1352,7 @@ Spotify secara cepat dan aman.</div>
       </div>
       <div class="donate-options">
         <a class="donate-option" href="https://saweria.co/zakdev" target="_blank">
-          <div class="donate-opt-icon" style="background:#1a1208;">🧡</div>
+                   <div class="donate-opt-icon" style="background:#1a1208;">🧡</div>
           <div class="donate-opt-info">
             <div class="donate-opt-name">Saweria</div>
             <div class="donate-opt-desc">Traktir kopi lewat Saweria</div>
@@ -1212,12 +1461,26 @@ Spotify secara cepat dan aman.</div>
   const SUPPORTED_HOSTS = [
     'tiktok.com', 'vt.tiktok.com', 'vm.tiktok.com',
     'youtube.com', 'youtu.be',
-    'instagram.com', 'twitter.com', 'x.com',
-    'facebook.com', 'fb.watch',
+    'instagram.com',
+    'facebook.com', 'fb.watch', 'fb.com',
   ];
 
   function isSupportedUrl(url) {
-    return url.startsWith('https://vt.tiktok.com/') || url.startsWith('https://vm.tiktok.com/');
+    try {
+      const host = new URL(url).hostname.replace('www.', '');
+      return SUPPORTED_HOSTS.some(h => host === h || host.endsWith('.' + h));
+    } catch(e) { return false; }
+  }
+
+  function detectPlatform(url) {
+    try {
+      const host = new URL(url).hostname.replace('www.', '');
+      if (host.includes('tiktok.com')) return 'tiktok';
+      if (host.includes('youtube.com') || host === 'youtu.be') return 'youtube';
+      if (host.includes('instagram.com')) return 'instagram';
+      if (host.includes('facebook.com') || host.includes('fb.watch') || host.includes('fb.com')) return 'facebook';
+    } catch(e) {}
+    return 'unknown';
   }
 
   async function autoPreview(url) {
@@ -1231,7 +1494,7 @@ Spotify secara cepat dan aman.</div>
       document.getElementById('btn-dlurl').textContent = 'Download Langsung';
       if (url.startsWith('http') && !isSupportedUrl(url)) {
         const statusEl = document.getElementById('url-status');
-        statusEl.textContent = '❌ Link tidak valid. Hanya link vt.tiktok.com / vm.tiktok.com yang diterima.';
+        statusEl.textContent = '❌ Platform tidak didukung. Gunakan link TikTok, YouTube, Instagram, atau Facebook.';
         statusEl.className = 'status-txt err';
       }
       return;
@@ -1248,23 +1511,44 @@ Spotify secara cepat dan aman.</div>
     btnDl.textContent = 'Sedang diproses...';
 
     try {
-      const resp = await fetch('/api/download_url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, resolution: resSelected['Url'] })
-      });
-      const data = await resp.json();
+      const platform = detectPlatform(url);
+      let data;
+
+      if (platform === 'tiktok') {
+        // TikTok: pakai /api/download_url (TikWM, cepat)
+        const resp = await fetch('/api/download_url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url, resolution: resSelected['Url'] })
+        });
+        data = await resp.json();
+      } else {
+        // YouTube / Instagram / Facebook: pakai /api/mp4_info
+        const resp = await fetch('/api/mp4_info', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url })
+        });
+        data = await resp.json();
+        // Normalisasi field supaya sama dgn TikTok response
+        if (data.status === 'success') {
+          data.size  = data.size  || 'N/A';
+          data.play  = url;
+          data.hdplay = url;
+        }
+      }
+
       if (data.status === 'success') {
         currentPreviewData = data;
         container.innerHTML = `
           <div class="preview-card">
-            <img src="${data.cover}" class="preview-thumb">
+            <img src="${data.cover}" class="preview-thumb" onerror="this.style.display='none'">
             <div class="preview-info">
               <div class="preview-title">${data.title}</div>
               <div class="preview-meta">
-                <span class="meta-tag">👤 ${data.author}</span>
-                <span class="meta-tag">⏱ ${data.duration}</span>
-                <span class="meta-tag">💾 ${data.size}</span>
+                <span class="meta-tag">👤 ${data.author || platform}</span>
+                <span class="meta-tag">⏱ ${data.duration || '-'}</span>
+                <span class="meta-tag">💾 ${data.size || 'N/A'}</span>
               </div>
             </div>
             <div style="color:var(--accent); font-size:18px;">⬇️</div>
@@ -1293,7 +1577,6 @@ Spotify secara cepat dan aman.</div>
     const bubble = createBubble(title, true);
     const filename = '[Vinder].' + title.replace(/[\/:\*?"<>|]/g, '').replace(/[#@]\S*/g, '').replace(/\s+/g, ' ').trim().slice(0, 60) + '.mp3';
 
-    
     // POST ke server - cover diambil dari frame tengah video di server
     try {
       const resp = await fetch('/api/fast_mp3', {
@@ -1348,7 +1631,7 @@ Spotify secara cepat dan aman.</div>
         [0,    0,   '⚡ Menghubungi server...'],
         [150,  8,   '🔍 Menganalisis link TikTok...'],
         [400,  18,  '🎯 Mengambil stream audio...'],
-        [700,  30,  '🔗 Terhubung ke CDN TikTok...'],
+        [700,  30,  '🔗 Terhubung ke CDN platform...'],
         [1000, 42,  '🎵 Mengekstrak audio asli...'],
         [1400, 55,  '⚙️ Encoding MP3 128kbps...'],
         [1900, 65,  '🖼️ Mengambil cover dari video...'],
@@ -1502,10 +1785,10 @@ Spotify secara cepat dan aman.</div>
     const url = document.getElementById('dl-url').value.trim();
     if (!url) return;
 
-    // Validasi: hanya vt.tiktok.com / vm.tiktok.com
+    // Validasi platform yang didukung
     if (!isSupportedUrl(url)) {
       const statusEl = document.getElementById('url-status');
-      statusEl.textContent = '❌ Link tidak valid. Hanya link vt.tiktok.com / vm.tiktok.com yang diterima.';
+      statusEl.textContent = '❌ Platform tidak didukung. Gunakan link TikTok, YouTube, Instagram, atau Facebook.';
       statusEl.className = 'status-txt err';
       return;
     }
@@ -1521,35 +1804,69 @@ Spotify secara cepat dan aman.</div>
       return;
     }
 
-    // MP4 mode — sama seperti sebelumnya
-    if (currentPreviewData && lastUrl === url) {
-      const dUrl = getDownloadUrl(currentPreviewData, resolution);
-      handleRealDownload(dUrl, currentPreviewData.title);
-      return;
-    }
-
+    // MP4 mode
+    const platform = detectPlatform(url);
     const btn = document.getElementById('btn-dlurl');
-    btn.disabled = true;
-    btn.textContent = 'Memproses...';
-    try {
-      const resp = await fetch('/api/download_url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, resolution })
-      });
-      const data = await resp.json();
-      if (data.status === 'success') {
-        const dUrl = getDownloadUrl(data, resolution);
-        handleRealDownload(dUrl, data.title);
-      } else {
-        throw new Error(data.msg);
+
+    if (platform === 'tiktok') {
+      // TikTok: pakai flow lama via /api/get_video (stream langsung TikWM)
+      if (currentPreviewData && lastUrl === url) {
+        const dUrl = getDownloadUrl(currentPreviewData, resolution);
+        handleRealDownload(dUrl, currentPreviewData.title);
+        return;
       }
-    } catch (e) {
-      const bubble = createBubble('URL Error', false);
-      bubble.setError(e.message);
-    } finally {
-      btn.disabled = false;
-      btn.textContent = selectedFormat === 'mp3' ? '⬇ Download MP3' : '⬇ Download MP4';
+      btn.disabled = true;
+      btn.textContent = 'Memproses...';
+      try {
+        const resp = await fetch('/api/download_url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url, resolution })
+        });
+        const data = await resp.json();
+        if (data.status === 'success') {
+          const dUrl = getDownloadUrl(data, resolution);
+          handleRealDownload(dUrl, data.title);
+        } else {
+          throw new Error(data.msg);
+        }
+      } catch (e) {
+        const bubble = createBubble('URL Error', false);
+        bubble.setError(e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = selectedFormat === 'mp3' ? '⬇ Download MP3' : '⬇ Download MP4';
+      }
+    } else {
+      // YouTube / Instagram / Facebook: pakai /api/download_mp4
+      const title = (currentPreviewData && lastUrl === url)
+        ? currentPreviewData.title
+        : platform + ' video';
+      const bubble = createBubble(title, true);
+      const quality = resolution === 'HYPE v1.3' ? 'best' : 'sd';
+      try {
+        const resp = await fetch('/api/download_mp4', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url, quality, title })
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ msg: 'Server error ' + resp.status }));
+          throw new Error(err.msg || 'Gagal download');
+        }
+        const blob = await resp.blob();
+        const objUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objUrl;
+        a.download = '[Vinder].' + title.replace(/[\/:\*?"<>|]/g,'').slice(0,60) + '.mp4';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(objUrl), 5000);
+        bubble.setSuccess();
+      } catch(e) {
+        bubble.setError(e.message);
+      }
     }
   }
 
@@ -1616,6 +1933,18 @@ Spotify secara cepat dan aman.</div>
   }
   function closeDonateModal() {
     document.getElementById('donate-modal').classList.remove('open');
+  }
+
+  /* ===== CHANGELOG ===== */
+  function showChangelog() {
+    const log = [
+      { v: 'v1.9', note: 'Features section, platform badges & footer' },
+      { v: 'v1.3', note: 'HYPE Engine — resolusi tak terbatas' },
+      { v: 'v1.2', note: 'MP3 Extract & format toggle' },
+      { v: 'v1.0', note: 'Rilis perdana Vinder' },
+    ];
+    const body = log.map(l => `${l.v}  —  ${l.note}`).join('\n');
+    alert('📋 Changelog\n\n' + body);
   }
 
   /* ===== HARD REFRESH ===== */
