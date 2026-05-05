@@ -558,7 +558,7 @@ def process_mp3_pipeline(url, title, out_tmpl, progress_cb=None):
             download_audio_direct(video_url, out_mp3)
 
     else:
-        # --- PLATFORM LAIN: yt-dlp bestaudio + FFmpegExtractAudio ---
+                # --- PLATFORM LAIN: yt-dlp bestaudio + FFmpegExtractAudio ---
         emit(15, "[API] Ambil audio stream via yt-dlp...")
         final_title = title
 
@@ -1498,11 +1498,21 @@ def mp4_info_api():
                 fb_author = None
                 if og_title:
                     parts = [p.strip() for p in og_title.split('|')]
-                    # Format: "description | Author | Facebook"
+                    # Format 1: "views | Judul | Author | Facebook"
                     if len(parts) >= 3 and parts[-1].lower() == 'facebook':
                         fb_author = parts[-2]
-                    elif len(parts) == 2 and parts[-1].lower() != 'facebook':
-                        fb_author = parts[-1]
+                    # Format 2: "views | Judul Author" — ambil nama kapital di akhir
+                    elif len(parts) >= 2:
+                        last = parts[-1]
+                        # Kalau pendek (< 40 char) kemungkinan langsung nama author
+                        if len(last) <= 40:
+                            fb_author = last
+                        else:
+                            # Nama orang biasanya 2-4 kata kapital di akhir string
+                            import re as _re3
+                            m = _re3.search(r'([A-Z][a-z]+(?: [A-Z][a-z]+){1,3})\s*$', last)
+                            if m:
+                                fb_author = m.group(1)
 
                 fb_meta = {
                     'title':     og_title,
@@ -1614,7 +1624,7 @@ def mp4_info_api():
         else:
             size_str = 'N/A'
 
-                # Author - avoid hostname as name
+        # Author - avoid hostname as name
         import re as _re
         raw_author = (
             info.get('uploader') or
