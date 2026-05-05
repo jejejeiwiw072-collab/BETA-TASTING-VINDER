@@ -748,7 +748,7 @@
       font-size: 12px;
       color: var(--muted2);
     }
-                .upload-preview img { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; }
+               .upload-preview img { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; }
     .upload-preview span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .upload-preview button {
       width: auto;
@@ -1352,7 +1352,7 @@
       </div>
       <div class="donate-options">
         <a class="donate-option" href="https://saweria.co/zakdev" target="_blank">
-                   <div class="donate-opt-icon" style="background:#1a1208;">🧡</div>
+                  <div class="donate-opt-icon" style="background:#1a1208;">🧡</div>
           <div class="donate-opt-info">
             <div class="donate-opt-name">Saweria</div>
             <div class="donate-opt-desc">Traktir kopi lewat Saweria</div>
@@ -1540,15 +1540,42 @@
 
       if (data.status === 'success') {
         currentPreviewData = data;
+
+        // ── Normalisasi field frontend ──
+        const platformLabels = { tiktok:'TikTok', youtube:'YouTube', instagram:'Instagram', facebook:'Facebook' };
+
+        // Author: kalau isinya domain/URL, ganti ke nama platform
+        let authorLabel = data.author || '';
+        if (!authorLabel || /https?:\/\/|www\.|\.(com|net|org|id)/.test(authorLabel)) {
+          authorLabel = platformLabels[platform] || platform;
+        }
+
+        // Durasi: kalau 0m00s atau - atau kosong → tampil '-'
+        let durLabel = (data.duration && data.duration !== '0m00s' && data.duration !== '-')
+          ? data.duration : '-';
+
+        // Size
+        let sizeLabel = (data.size && data.size !== 'N/A') ? data.size : 'N/A';
+
+        // Thumbnail: fallback ke icon platform kalau kosong/error
+        const platformIcons = {
+          youtube:   'https://www.youtube.com/favicon.ico',
+          instagram: 'https://www.instagram.com/favicon.ico',
+          facebook:  'https://www.facebook.com/favicon.ico',
+          tiktok:    'https://www.tiktok.com/favicon.ico',
+        };
+        const thumbSrc = data.cover || platformIcons[platform] || '';
+
         container.innerHTML = `
           <div class="preview-card">
-            <img src="${data.cover}" class="preview-thumb" onerror="this.style.display='none'">
+            <img src="${thumbSrc}" class="preview-thumb"
+              onerror="this.src='${platformIcons[platform] || ''}'; this.onerror=null;">
             <div class="preview-info">
-              <div class="preview-title">${data.title}</div>
+              <div class="preview-title">${data.title || 'Video'}</div>
               <div class="preview-meta">
-                <span class="meta-tag">👤 ${data.author || platform}</span>
-                <span class="meta-tag">⏱ ${data.duration || '-'}</span>
-                <span class="meta-tag">💾 ${data.size || 'N/A'}</span>
+                <span class="meta-tag">👤 ${authorLabel}</span>
+                <span class="meta-tag">⏱ ${durLabel}</span>
+                <span class="meta-tag">💾 ${sizeLabel}</span>
               </div>
             </div>
             <div style="color:var(--accent); font-size:18px;">⬇️</div>
@@ -1843,7 +1870,7 @@
         ? currentPreviewData.title
         : platform + ' video';
       const bubble = createBubble(title, true);
-      const quality = resolution === 'HYPE v1.3' ? 'best' : 'sd';
+     const quality = resolution === 'HYPE v1.3' ? 'best' : 'sd';
       try {
         const resp = await fetch('/api/download_mp4', {
           method: 'POST',
