@@ -1447,20 +1447,64 @@ def mp4_info_api():
             'user_agent':  TIKTOK_UA,
             'http_headers': DEFAULT_HEADERS,
         }
-        # Facebook share/redirect URL — follow redirect ke URL asli dulu
-        if platform == 'facebook' and any(x in url for x in ['share/r/', 'share/v/', 'fb.watch', 'v.facebook.com']):
+
+        # ── Facebook share/r/ handling ──
+        # URL tipe facebook.com/share/r/... adalah Reels share link baru.
+        # yt-dlp sering gagal extract (pakai generic extractor, formats=0).
+        # Solusi: scrape og: meta tags dari HTML halaman untuk ambil
+        # title, author, thumbnail, duration secara manual.
+        fb_meta = {}
+        if platform == 'facebook':
             try:
                 import urllib.request as _req
-                _r = _req.urlopen(
-                    _req.Request(url, headers={'User-Agent': TIKTOK_UA}),
-                    timeout=8
-                )
-                resolved_fb_url = _r.url
-                if resolved_fb_url and 'facebook.com' in resolved_fb_url and resolved_fb_url != url:
-                    logger.info(f"[INFO] Facebook redirect resolved: {url[:60]} → {resolved_fb_url[:60]}")
-                    url = resolved_fb_url
+                import html as _html
+                import re as _re2
+                _headers = {
+                    'User-Agent': 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                }
+                _req_obj = _req.Request(url, headers=_headers)
+                _resp = _req.urlopen(_req_obj, timeout=10)
+                _html_bytes = _resp.read(80000)  # baca 80KB pertama saja
+                _html_str = _html_bytes.decode('utf-8', errors='replace')
+
+                def _og(prop):
+                    m = _re2.search(
+                        r'<meta[^>]+property=["\']og:' + prop + r'["\'][^>]+content=["\']([^"\']+)["\']',
+                        _html_str, _re2.IGNORECASE
+                    )
+                    if not m:
+                        m = _re2.search(
+                            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:' + prop + r'["\']',
+                            _html_str, _re2.IGNORECASE
+                        )
+                    return _html.unescape(m.group(1).strip()) if m else None
+
+                og_title     = _og('title')
+                og_desc      = _og('description')
+                og_image     = _og('image')
+                og_video_dur = _og('video:duration')  # detik, kadang ada
+
+                # Author: ambil dari title "... | Nama Page | Facebook"
+                fb_author = None
+                if og_title:
+                    parts = [p.strip() for p in og_title.split('|')]
+                    # Format: "description | Author | Facebook"
+                    if len(parts) >= 3 and parts[-1].lower() == 'facebook':
+                        fb_author = parts[-2]
+                    elif len(parts) == 2 and parts[-1].lower() != 'facebook':
+                        fb_author = parts[-1]
+
+                fb_meta = {
+                    'title':     og_title,
+                    'author':    fb_author,
+                    'thumbnail': og_image,
+                    'duration':  int(og_video_dur) if og_video_dur else None,
+                    'description': og_desc,
+                }
+                logger.info(f"[INFO] FB og-meta: title={og_title!r} author={fb_author!r} dur={og_video_dur}")
             except Exception as _e:
-                logger.warning(f"[WARN] Facebook redirect resolve gagal: {_e}, lanjut dengan URL asli")
+                logger.warning(f"[WARN] FB og-scrape gagal: {_e}")
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -1561,19 +1605,16 @@ def mp4_info_api():
         else:
             size_str = 'N/A'
 
-        # ── Author — hindari hostname sebagai nama ──
+        # Author - avoid hostname as name
         import re as _re
         raw_author = (
             info.get('uploader') or
             info.get('channel') or
             info.get('creator') or
-            info.get('uploader_url') and None or  # skip uploader_url, itu URL bukan nama
-            info.get('page_name') or              # Facebook page name (kadang ada)
+            info.get('page_name') or
             info.get('uploader_id') or
             'Unknown'
         )
-        # Hanya replace kalau string DIMULAI dengan http/www,
-        # atau seluruhnya berupa angka (uploader_id numerik FB)
         is_url_like = _re.match(r'^(https?://|www\.)', raw_author or '')
         is_numeric  = _re.match(r'^\d+$', raw_author or '')
         if is_url_like or is_numeric:
@@ -1583,21 +1624,39 @@ def mp4_info_api():
             }
             raw_author = platform_names.get(platform, platform.title())
 
-        # ── Thumbnail — pilih yang paling besar / berkualitas ──
+        # Fallback ke fb_meta kalau author masih generik
+        if platform == 'facebook' and fb_meta.get('author') and raw_author in ('Facebook', 'Unknown', 'www.facebook.com'):
+            raw_author = fb_meta['author']
+
+        # Duration fallback ke fb_meta
+        if duration_str == '-' and platform == 'facebook' and fb_meta.get('duration'):
+            _ds = fb_meta['duration']
+            _m, _s = divmod(_ds, 60)
+            duration_str = f"{_m}m{_s:02d}s"
+
+        # Thumbnail
         thumbnails = info.get('thumbnails') or []
         best_thumb = info.get('thumbnail')
         if thumbnails:
-            # Pilih thumbnail dengan resolusi tertinggi
             def thumb_score(t):
                 return (t.get('width') or 0) * (t.get('height') or 0)
             best = max(thumbnails, key=thumb_score, default=None)
             if best and best.get('url'):
                 best_thumb = best['url']
+        if not best_thumb and platform == 'facebook' and fb_meta.get('thumbnail'):
+            best_thumb = fb_meta['thumbnail']
+
+        # Title
+        final_title = info.get('title', '') or ''
+        if platform == 'facebook' and (not final_title or final_title in ('Facebook', 'www.facebook.com')) and fb_meta.get('title'):
+            final_title = fb_meta['title']
+        if not final_title:
+            final_title = 'Video'
 
         return jsonify({
             "status":      "success",
             "platform":    platform,
-            "title":       info.get('title', 'Video'),
+            "title":       final_title,
             "cover":       best_thumb,
             "author":      raw_author,
             "duration":    duration_str,
