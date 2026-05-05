@@ -1352,7 +1352,7 @@
       </div>
       <div class="donate-options">
         <a class="donate-option" href="https://saweria.co/zakdev" target="_blank">
-                   <div class="donate-opt-icon" style="background:#1a1208;">🧡</div>
+                  <div class="donate-opt-icon" style="background:#1a1208;">🧡</div>
           <div class="donate-opt-info">
             <div class="donate-opt-name">Saweria</div>
             <div class="donate-opt-desc">Traktir kopi lewat Saweria</div>
@@ -1564,7 +1564,10 @@
           facebook:  'https://www.facebook.com/favicon.ico',
           tiktok:    'https://www.tiktok.com/favicon.ico',
         };
-        const thumbSrc = data.cover || platformIcons[platform] || '';
+        const rawThumb = data.cover || '';
+        const thumbSrc = (platform === 'instagram' && rawThumb)
+          ? '/api/thumb?url=' + encodeURIComponent(rawThumb)
+          : (rawThumb || platformIcons[platform] || '');
 
         container.innerHTML = `
           <div class="preview-card">
@@ -1776,7 +1779,7 @@
             <div class="video-title">${v.title}</div>
             <div class="video-meta">
               <span class="meta-tag">⏱ ${v.duration}</span>
-                          <span class="meta-tag">💾 ${v.size}</span>
+              <span class="meta-tag">💾 ${v.size}</span>
             </div>
             <button class="btn-dl" onclick="handleSearchDownload(this,'${encodeURIComponent(v.hdplay||v.play)}','${encodeURIComponent(v.title)}','${encodeURIComponent(v.play)}')">
               ⬇ Download ${selectedFormat.toUpperCase()}
