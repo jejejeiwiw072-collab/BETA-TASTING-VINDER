@@ -437,14 +437,14 @@ def embed_cover(mp3_path, cover_path):
 
         # Step 2: embed via mutagen ID3 APIC tag langsung ke MP3
         # Mutagen tulis ID3 tag native - tidak ada container MP4, tidak ada video stream
-        from mutagen.id3 import ID3, APIC, error as ID3Error
+        from mutagen.id3 import ID3, APIC, ID3NoHeaderError
 
         with open(thumb_path, 'rb') as img_f:
             img_data = img_f.read()
 
         try:
             tags = ID3(mp3_path)
-        except ID3Error:
+        except ID3NoHeaderError:
             tags = ID3()
 
         tags.add(APIC(
@@ -1104,10 +1104,11 @@ def fast_mp3_api():
         # ── Embed cover via mutagen ──
         if cover_raw[0]:
             try:
-               from mutagen.id3 import ID3, APIC, error as ID3Error
+                from mutagen.id3 import ID3, APIC
+                from mutagen.id3 import ID3NoHeaderError
                 try:
                     tags = ID3(tmp_mp3)
-                except ID3Error:
+                except ID3NoHeaderError:
                     tags = ID3()
                 tags.add(APIC(
                     encoding=3, mime='image/jpeg',
