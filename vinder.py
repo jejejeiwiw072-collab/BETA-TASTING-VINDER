@@ -594,6 +594,15 @@ def index():
     return send_file('vinder.html')
 
 
+@app.route('/favicon.ico')
+def favicon():
+    # Serve Iconweb.png sebagai favicon
+    try:
+        return send_file('Iconweb.png', mimetype='image/png')
+    except Exception:
+        return '', 204
+
+
 @app.route('/api/search', methods=['POST'])
 def search_videos_api():
     data       = request.json
@@ -1605,7 +1614,7 @@ def mp4_info_api():
         else:
             size_str = 'N/A'
 
-        # Author - avoid hostname as name
+                # Author - avoid hostname as name
         import re as _re
         raw_author = (
             info.get('uploader') or
