@@ -1352,7 +1352,7 @@
       </div>
       <div class="donate-options">
         <a class="donate-option" href="https://saweria.co/zakdev" target="_blank">
-                  <div class="donate-opt-icon" style="background:#1a1208;">🧡</div>
+                   <div class="donate-opt-icon" style="background:#1a1208;">🧡</div>
           <div class="donate-opt-info">
             <div class="donate-opt-name">Saweria</div>
             <div class="donate-opt-desc">Traktir kopi lewat Saweria</div>
@@ -1550,12 +1550,12 @@
           authorLabel = platformLabels[platform] || platform;
         }
 
-        // Durasi: kalau 0m00s atau - atau kosong → tampil '-'
+        // Durasi: kalau 0m00s atau - atau kosong -> tampil '-' (atau 'Time' khusus Facebook)
         let durLabel = (data.duration && data.duration !== '0m00s' && data.duration !== '-')
-          ? data.duration : '-';
+          ? data.duration : (platform === 'facebook' ? 'Time' : '-');
 
         // Size
-        let sizeLabel = (data.size && data.size !== 'N/A') ? data.size : 'N/A';
+        let sizeLabel = (data.size && data.size !== 'N/A') ? data.size : (platform === 'facebook' ? 'Size' : 'N/A');
 
         // Thumbnail: fallback ke icon platform kalau kosong/error
         const platformIcons = {
@@ -1776,7 +1776,7 @@
             <div class="video-title">${v.title}</div>
             <div class="video-meta">
               <span class="meta-tag">⏱ ${v.duration}</span>
-              <span class="meta-tag">💾 ${v.size}</span>
+                          <span class="meta-tag">💾 ${v.size}</span>
             </div>
             <button class="btn-dl" onclick="handleSearchDownload(this,'${encodeURIComponent(v.hdplay||v.play)}','${encodeURIComponent(v.title)}','${encodeURIComponent(v.play)}')">
               ⬇ Download ${selectedFormat.toUpperCase()}
