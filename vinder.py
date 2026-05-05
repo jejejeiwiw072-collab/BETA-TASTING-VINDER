@@ -355,7 +355,7 @@ def download_audio_direct(audio_url, out_mp3):
 def download_audio_ytdlp(url, out_mp3):
     """
     Download audio asli video via yt-dlp dengan format bestaudio.
-    Dipakai untuk YouTube, Instagram, Twitter/X, Facebook.
+    Dipakai untuk YouTube, Instagram, Facebook.
     Tidak download video sama sekali - langsung ambil audio stream.
     """
     ydl_opts = {
@@ -558,7 +558,7 @@ def process_mp3_pipeline(url, title, out_tmpl, progress_cb=None):
             download_audio_direct(video_url, out_mp3)
 
     else:
-           # --- PLATFORM LAIN: yt-dlp bestaudio + FFmpegExtractAudio ---
+                # --- PLATFORM LAIN: yt-dlp bestaudio + FFmpegExtractAudio ---
         emit(15, "[API] Ambil audio stream via yt-dlp...")
         final_title = title
 
@@ -661,7 +661,7 @@ def search_videos_api():
 SUPPORTED_PLATFORMS = [
     'tiktok.com', 'vt.tiktok.com', 'vm.tiktok.com',
     'youtube.com', 'youtu.be',
-    'instagram.com', 'twitter.com', 'x.com',
+    'instagram.com',
     'facebook.com', 'fb.watch',
 ]
 
@@ -684,7 +684,7 @@ def download_url_api():
         logger.warning(f"[WARN] Platform tidak didukung: {url_input}")
         return jsonify({
             "status": "error",
-            "msg":    "Platform tidak didukung. Vinder mendukung: TikTok, YouTube, Instagram, Twitter/X, Facebook."
+            "msg":    "Platform tidak didukung. Vinder mendukung: TikTok, YouTube, Instagram, Facebook."
         })
 
     ydl_opts = {
@@ -1104,7 +1104,7 @@ def fast_mp3_api():
         # ── Embed cover via mutagen ──
         if cover_raw[0]:
             try:
-                from mutagen.id3 import ID3, APIC, error as ID3Error
+               from mutagen.id3 import ID3, APIC, error as ID3Error
                 try:
                     tags = ID3(tmp_mp3)
                 except ID3Error:
@@ -1150,6 +1150,339 @@ def fast_mp3_api():
     except Exception as e:
         logger.error(f"fast_mp3 error: {e}")
         return f"Error: {str(e)}", 500
+
+# =============================================================================
+# MULTI-PLATFORM MP4 DOWNLOAD
+# =============================================================================
+
+# Platform list yang didukung untuk download MP4
+MP4_SUPPORTED_PLATFORMS = [
+    # TikTok
+    'tiktok.com', 'vt.tiktok.com', 'vm.tiktok.com',
+    # YouTube
+    'youtube.com', 'youtu.be', 'www.youtube.com',
+    # Instagram
+    'instagram.com', 'www.instagram.com',
+    # Facebook
+    'facebook.com', 'fb.watch', 'www.facebook.com', 'fb.com',
+]
+
+def detect_platform(url):
+    """Detect platform dari URL. Return string platform name."""
+    url_lower = url.lower()
+    if any(x in url_lower for x in ['tiktok.com', 'vt.tiktok.com', 'vm.tiktok.com']):
+        return 'tiktok'
+    elif any(x in url_lower for x in ['youtube.com', 'youtu.be']):
+        return 'youtube'
+    elif 'instagram.com' in url_lower:
+        return 'instagram'
+    elif any(x in url_lower for x in ['facebook.com', 'fb.watch', 'fb.com']):
+        return 'facebook'
+    return 'unknown'
+
+
+def is_mp4_supported_url(url):
+    """Cek apakah URL dari platform yang didukung."""
+    if not url:
+        return False
+    return any(p in url for p in MP4_SUPPORTED_PLATFORMS)
+
+
+def download_video_ytdlp(url, out_mp4, quality='best', progress_cb=None):
+    """
+    Download video MP4 via yt-dlp.
+    Mendukung YouTube, Instagram, Facebook, TikTok.
+
+    quality: 'best' | 'hd' | 'sd'
+    - best : bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best
+    - hd   : bestvideo[height<=1080][ext=mp4]+bestaudio/best[height<=1080]
+    - sd   : bestvideo[height<=480][ext=mp4]+bestaudio/best[height<=480]
+    """
+    def emit(pct, msg):
+        if progress_cb:
+            progress_cb(pct, msg)
+        logger.info(f"[{pct}%] {msg}")
+
+    format_map = {
+        'best': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best',
+        'hd':   'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]',
+        'sd':   'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=480]+bestaudio/best[height<=480]',
+    }
+    fmt = format_map.get(quality, format_map['best'])
+
+    # Cookies untuk platform yang butuh auth (Instagram, Facebook)
+    platform = detect_platform(url)
+
+    ydl_opts = {
+        'format':          fmt,
+        'outtmpl':         out_mp4,
+        'quiet':           True,
+        'no_warnings':     True,
+        'noplaylist':      True,
+        'merge_output_format': 'mp4',
+        'user_agent':      TIKTOK_UA,
+        'http_headers':    DEFAULT_HEADERS,
+        'retries':         3,
+        'fragment_retries': 3,
+        'socket_timeout':  30,
+        'postprocessors': [{
+            'key': 'FFmpegVideoConvertor',
+            'preferedformat': 'mp4',
+        }],
+    }
+
+    # Tambahan opsi platform-spesifik
+    if platform == 'youtube':
+        ydl_opts['http_headers'] = {
+            **DEFAULT_HEADERS,
+            'Referer': 'https://www.youtube.com/',
+        }
+    elif platform == 'instagram':
+        ydl_opts['http_headers'] = {
+            **DEFAULT_HEADERS,
+            'Referer': 'https://www.instagram.com/',
+        }
+    elif platform in ('facebook', 'fb'):
+        ydl_opts['http_headers'] = {
+            **DEFAULT_HEADERS,
+            'Referer': 'https://www.facebook.com/',
+        }
+
+    emit(20, f"[DL] Download {platform.upper()} via yt-dlp ({quality})...")
+    logger.info(f"[DL] yt-dlp format: {fmt} | URL: {url[:80]}...")
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        final_title = info.get('title', 'video') if info else 'video'
+
+    emit(85, "[OK] Download selesai, siapkan file...")
+    return final_title
+
+
+@app.route('/api/download_mp4', methods=['GET', 'POST'])
+def download_mp4_api():
+    """
+    Download MP4 dari berbagai platform: YouTube, TikTok, Instagram, Facebook.
+
+    Parameter:
+      - url     : URL video
+      - quality : 'best' | 'hd' | 'sd' (default: 'best')
+      - title   : judul override (opsional)
+
+    Flow:
+      TikTok  -> coba TikWM (HD) dulu, fallback ke yt-dlp
+      Lainnya -> yt-dlp langsung, merge ke MP4
+    """
+    import tempfile
+
+    if request.method == 'POST':
+        data    = request.get_json(force=True) or {}
+        url     = data.get('url', '').strip()
+        quality = data.get('quality', 'best').strip()
+        title   = data.get('title', '').strip()
+    else:
+        url     = request.args.get('url', '').strip()
+        quality = request.args.get('quality', 'best').strip()
+        title   = request.args.get('title', '').strip()
+
+    kirim_notif(f"User download MP4: {url}")
+    logger.info(f"[MP4] Request: {url[:80]} | quality={quality}")
+
+    if not url:
+        return jsonify({"status": "error", "msg": "URL kosong"}), 400
+
+    if not is_mp4_supported_url(url):
+        return jsonify({
+            "status": "error",
+            "msg": "Platform tidak didukung. Didukung: TikTok, YouTube, Instagram, Facebook."
+        }), 400
+
+    platform = detect_platform(url)
+    uid      = str(int(time.time() * 1000))
+    out_mp4  = f'/tmp/vinder_mp4_{uid}.mp4'
+
+    try:
+        final_title = title or 'video'
+
+        # ── TikTok: coba TikWM dulu (lebih cepat, HD tanpa watermark) ──
+        if platform == 'tiktok':
+            resolved = url
+            if 'vt.tiktok.com' in url or 'vm.tiktok.com' in url:
+                resolved = resolve_tiktok_url(url)
+
+            logger.info(f"[MP4] TikTok: coba TikWM HD...")
+            video_url, cover_url, tikwm_title = get_meta_via_tikwm(resolved, for_audio=False)
+
+            if video_url:
+                final_title = tikwm_title or final_title
+                logger.info(f"[MP4] TikWM HD OK, stream langsung...")
+                r, _ = fetch_video_stream(video_url)
+                if r and r.status_code < 400:
+                    fname        = f"[Vinder].{safe_filename(final_title)}.mp4"
+                    content_type = r.headers.get('Content-Type', 'video/mp4')
+
+                    def stream_tiktok():
+                        try:
+                            for chunk in r.iter_content(chunk_size=1024 * 1024):
+                                if chunk:
+                                    yield chunk
+                        finally:
+                            pass
+
+                    return Response(
+                        stream_with_context(stream_tiktok()),
+                        headers={
+                            'Content-Type':        content_type,
+                            'Content-Disposition': make_content_disposition(fname),
+                            'Cache-Control':       'no-cache',
+                        }
+                    )
+                logger.warning("[MP4] TikWM stream gagal, fallback yt-dlp...")
+            else:
+                logger.warning("[MP4] TikWM tidak dapat URL, fallback yt-dlp...")
+
+        # ── Semua platform (termasuk TikTok fallback): yt-dlp download ──
+        logger.info(f"[MP4] yt-dlp download: {platform.upper()} | quality={quality}")
+        final_title = download_video_ytdlp(url, out_mp4, quality=quality)
+        final_title = title or final_title
+
+        if not os.path.exists(out_mp4):
+            # Cari file hasil yt-dlp (mungkin ada ekstensi berbeda)
+            import glob
+            candidates = sorted(glob.glob(f'/tmp/vinder_mp4_{uid}*'), key=os.path.getsize, reverse=True)
+            if candidates:
+                os.replace(candidates[0], out_mp4)
+            else:
+                return jsonify({"status": "error", "msg": "File video tidak berhasil dibuat"}), 500
+
+        file_size = os.path.getsize(out_mp4)
+        fname     = f"[Vinder].{safe_filename(final_title)}.mp4"
+        logger.info(f"[OK] MP4 siap: {fname} ({file_size // 1024 // 1024}MB)")
+
+        def generate_mp4():
+            try:
+                with open(out_mp4, 'rb') as f:
+                    while True:
+                        chunk = f.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        yield chunk
+            finally:
+                try:
+                    os.remove(out_mp4)
+                except Exception:
+                    pass
+
+        return Response(
+            stream_with_context(generate_mp4()),
+            headers={
+                'Content-Type':        'video/mp4',
+                'Content-Disposition': make_content_disposition(fname),
+                'Content-Length':      str(file_size),
+                'Cache-Control':       'no-cache',
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"[ERR] download_mp4 error: {e}")
+        # Cleanup kalau ada file temp
+        try:
+            if os.path.exists(out_mp4):
+                os.remove(out_mp4)
+        except Exception:
+            pass
+        return jsonify({"status": "error", "msg": str(e)}), 500
+
+
+@app.route('/api/mp4_info', methods=['GET', 'POST'])
+def mp4_info_api():
+    """
+    Ambil info/metadata video sebelum download MP4.
+    Return: title, thumbnail, duration, platform, available_qualities.
+
+    Beda dengan /api/download_url - ini spesifik untuk preview sebelum MP4 download,
+    dan juga return list kualitas yang tersedia.
+    """
+    if request.method == 'POST':
+        data = request.get_json(force=True) or {}
+        url  = data.get('url', '').strip()
+    else:
+        url = request.args.get('url', '').strip()
+
+    if not url:
+        return jsonify({"status": "error", "msg": "URL kosong"}), 400
+
+    if not is_mp4_supported_url(url):
+        return jsonify({
+            "status": "error",
+            "msg": "Platform tidak didukung. Didukung: TikTok, YouTube, Instagram, Facebook."
+        }), 400
+
+    platform = detect_platform(url)
+    logger.info(f"[INFO] mp4_info request: {platform.upper()} | {url[:80]}")
+
+    try:
+        # TikTok: pakai TikWM untuk info cepat
+        if platform == 'tiktok':
+            resolved = url
+            if 'vt.tiktok.com' in url or 'vm.tiktok.com' in url:
+                resolved = resolve_tiktok_url(url)
+            video_url, cover_url, tikwm_title = get_meta_via_tikwm(resolved, for_audio=False)
+            if video_url:
+                return jsonify({
+                    "status":    "success",
+                    "platform":  "tiktok",
+                    "title":     tikwm_title or "TikTok Video",
+                    "cover":     cover_url,
+                    "qualities": ["best"],
+                    "note":      "TikTok: HD tanpa watermark via TikWM"
+                })
+
+        # Platform lain: pakai yt-dlp extract_info (no download)
+        ydl_opts = {
+            'quiet':       True,
+            'no_warnings': True,
+            'noplaylist':  True,
+            'user_agent':  TIKTOK_UA,
+            'http_headers': DEFAULT_HEADERS,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+
+        # Kumpulkan kualitas unik yang tersedia
+        formats   = info.get('formats') or []
+        heights   = sorted(set(
+            f.get('height') for f in formats
+            if f.get('height') and f.get('vcodec') not in (None, 'none')
+        ), reverse=True)
+        qualities = []
+        if any(h >= 1080 for h in heights):
+            qualities.append('hd')
+        if any(h <= 480 for h in heights):
+            qualities.append('sd')
+        if not qualities:
+            qualities = ['best']
+        else:
+            qualities = ['best'] + qualities
+
+        duration_s = info.get('duration', 0)
+        m, s = divmod(int(duration_s or 0), 60)
+
+        return jsonify({
+            "status":     "success",
+            "platform":   platform,
+            "title":      info.get('title', 'Video'),
+            "cover":      info.get('thumbnail'),
+            "author":     info.get('uploader') or info.get('channel', 'Unknown'),
+            "duration":   f"{m}m{s:02d}s",
+            "qualities":  qualities,
+            "resolutions": [f"{h}p" for h in heights[:5]],
+        })
+
+    except Exception as e:
+        logger.error(f"[ERR] mp4_info error: {e}")
+        return jsonify({"status": "error", "msg": str(e)}), 500
+
 
 # =============================================================================
 # MAIN
