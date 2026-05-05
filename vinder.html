@@ -2,8 +2,7 @@
 <html lang="id">
 <head>
     <meta name="google-site-verification" content="GHstpy6snm1A3qBy0j__vRBFzDGW8xj7Ct5HfsCrtCw" />
-<link rel="shortcut icon" href="/Iconweb.png">
-<link rel="icon" type="image/png" href="/Iconweb.png">
+  <link rel="icon" type="image/png" href="/Iconweb.png">
 <link rel="apple-touch-icon" href="/Iconweb.png">
 <script type="application/ld+json">
 {
@@ -749,7 +748,7 @@
       font-size: 12px;
       color: var(--muted2);
     }
-                .upload-preview img { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; }
+               .upload-preview img { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; }
     .upload-preview span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .upload-preview button {
       width: auto;
@@ -1353,7 +1352,7 @@
       </div>
       <div class="donate-options">
         <a class="donate-option" href="https://saweria.co/zakdev" target="_blank">
-                    <div class="donate-opt-icon" style="background:#1a1208;">🧡</div>
+                  <div class="donate-opt-icon" style="background:#1a1208;">🧡</div>
           <div class="donate-opt-info">
             <div class="donate-opt-name">Saweria</div>
             <div class="donate-opt-desc">Traktir kopi lewat Saweria</div>
@@ -1545,14 +1544,9 @@
         // ── Normalisasi field frontend ──
         const platformLabels = { tiktok:'TikTok', youtube:'YouTube', instagram:'Instagram', facebook:'Facebook' };
 
-        // Author: kalau isinya domain/URL atau string generik, ganti ke nama platform
+        // Author: kalau isinya domain/URL, ganti ke nama platform
         let authorLabel = data.author || '';
-        const _badAuthor = !authorLabel
-          || /^https?:\/\//.test(authorLabel)
-          || /^www\./.test(authorLabel)
-          || authorLabel === 'www.facebook.com'
-          || /^\d+$/.test(authorLabel);
-        if (_badAuthor) {
+        if (!authorLabel || /https?:\/\/|www\.|\.(com|net|org|id)/.test(authorLabel)) {
           authorLabel = platformLabels[platform] || platform;
         }
 
@@ -1830,48 +1824,6 @@
 
     // MP3 mode → background job langsung
     if (selectedFormat === 'mp3') {
-      const title = (currentPreviewData && lastUrl === url)
-        ? currentPreviewData.title
-        : (url.split('/').pop() || 'audio');
-      startMp3Background(url, title);
-      return;
-    }
-
-    // MP4 mode
-    const platform = detectPlatform(url);
-    const btn = document.getElementById('btn-dlurl');
-
-    if (platform === 'tiktok') {
-      // TikTok: pakai flow lama via /api/get_video (stream langsung TikWM)
-      if (currentPreviewData && lastUrl === url) {
-        const dUrl = getDownloadUrl(currentPreviewData, resolution);
-        handleRealDownload(dUrl, currentPreviewData.title);
-        return;
-      }
-      btn.disabled = true;
-      btn.textContent = 'Memproses...';
-      try {
-        const resp = await fetch('/api/download_url', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url, resolution })
-        });
-        const data = await resp.json();
-        if (data.status === 'success') {
-          const dUrl = getDownloadUrl(data, resolution);
-          handleRealDownload(dUrl, data.title);
-        } else {
-          throw new Error(data.msg);
-        }
-      } catch (e) {
-        const bubble = createBubble('URL Error', false);
-        bubble.setError(e.message);
-      } finally {
-        btn.disabled = false;
-        btn.textContent = selectedFormat === 'mp3' ? '⬇ Download MP3' : '⬇ Download MP4';
-      }
-    } else {
-      // YouTube / Instagram / Facebook: pakai /api/download_mp4
       const title = (currentPreviewData && lastUrl === url)
         ? currentPreviewData.title
         : (url.split('/').pop() || 'audio');
