@@ -558,7 +558,7 @@ def process_mp3_pipeline(url, title, out_tmpl, progress_cb=None):
             download_audio_direct(video_url, out_mp3)
 
     else:
-                # --- PLATFORM LAIN: yt-dlp bestaudio + FFmpegExtractAudio ---
+        # --- PLATFORM LAIN: yt-dlp bestaudio + FFmpegExtractAudio ---
         emit(15, "[API] Ambil audio stream via yt-dlp...")
         final_title = title
 
@@ -1466,17 +1466,86 @@ def mp4_info_api():
         else:
             qualities = ['best'] + qualities
 
-        duration_s = info.get('duration', 0)
-        m, s = divmod(int(duration_s or 0), 60)
+        # ── Durasi ──
+        duration_s = int(info.get('duration') or 0)
+        if duration_s > 0:
+            m, s = divmod(duration_s, 60)
+            duration_str = f"{m}m{s:02d}s"
+        else:
+            duration_str = '-'
+
+        # ── Ukuran file — estimasi dari format terbaik ──
+        size_bytes = 0
+        try:
+            # Ambil filesize dari format video+audio terbaik
+            for fmt in reversed(formats):
+                fs = fmt.get('filesize') or fmt.get('filesize_approx') or 0
+                if fs and fmt.get('vcodec') not in (None, 'none'):
+                    size_bytes = fs
+                    break
+            # Fallback: total dari format terpisah (video + audio)
+            if not size_bytes:
+                v_size = next((
+                    f.get('filesize') or f.get('filesize_approx') or 0
+                    for f in reversed(formats)
+                    if f.get('vcodec') not in (None, 'none')
+                ), 0)
+                a_size = next((
+                    f.get('filesize') or f.get('filesize_approx') or 0
+                    for f in reversed(formats)
+                    if f.get('acodec') not in (None, 'none') and f.get('vcodec') in (None, 'none')
+                ), 0)
+                size_bytes = (v_size or 0) + (a_size or 0)
+            # Fallback: info.filesize_approx
+            if not size_bytes:
+                size_bytes = info.get('filesize_approx') or info.get('filesize') or 0
+        except Exception:
+            size_bytes = 0
+
+        if size_bytes >= 1024 * 1024:
+            size_str = f"{size_bytes / 1024 / 1024:.1f}MB"
+        elif size_bytes > 0:
+            size_str = f"{size_bytes // 1024}KB"
+        else:
+            size_str = 'N/A'
+
+        # ── Author — hindari hostname sebagai nama ──
+        raw_author = (
+            info.get('uploader') or
+            info.get('channel') or
+            info.get('creator') or
+            info.get('uploader_id') or
+            'Unknown'
+        )
+        # Kalau isinya URL / domain (ada titik + TLD), pakai nama platform
+        import re as _re
+        if _re.search(r'https?://|www\.|\.com|\.net|\.org', raw_author or ''):
+            platform_names = {
+                'youtube': 'YouTube', 'instagram': 'Instagram',
+                'facebook': 'Facebook', 'tiktok': 'TikTok'
+            }
+            raw_author = platform_names.get(platform, platform.title())
+
+        # ── Thumbnail — pilih yang paling besar / berkualitas ──
+        thumbnails = info.get('thumbnails') or []
+        best_thumb = info.get('thumbnail')
+        if thumbnails:
+            # Pilih thumbnail dengan resolusi tertinggi
+            def thumb_score(t):
+                return (t.get('width') or 0) * (t.get('height') or 0)
+            best = max(thumbnails, key=thumb_score, default=None)
+            if best and best.get('url'):
+                best_thumb = best['url']
 
         return jsonify({
-            "status":     "success",
-            "platform":   platform,
-            "title":      info.get('title', 'Video'),
-            "cover":      info.get('thumbnail'),
-            "author":     info.get('uploader') or info.get('channel', 'Unknown'),
-            "duration":   f"{m}m{s:02d}s",
-            "qualities":  qualities,
+            "status":      "success",
+            "platform":    platform,
+            "title":       info.get('title', 'Video'),
+            "cover":       best_thumb,
+            "author":      raw_author,
+            "duration":    duration_str,
+            "size":        size_str,
+            "qualities":   qualities,
             "resolutions": [f"{h}p" for h in heights[:5]],
         })
 
