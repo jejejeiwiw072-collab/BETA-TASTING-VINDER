@@ -558,7 +558,7 @@ def process_mp3_pipeline(url, title, out_tmpl, progress_cb=None):
             download_audio_direct(video_url, out_mp3)
 
     else:
-                # --- PLATFORM LAIN: yt-dlp bestaudio + FFmpegExtractAudio ---
+        # --- PLATFORM LAIN: yt-dlp bestaudio + FFmpegExtractAudio ---
         emit(15, "[API] Ambil audio stream via yt-dlp...")
         final_title = title
 
@@ -601,6 +601,28 @@ def favicon():
         return send_file('Iconweb.png', mimetype='image/png')
     except Exception:
         return '', 204
+
+
+@app.route('/api/thumb')
+def proxy_thumbnail():
+    """Proxy thumbnail Instagram biar ga broken karena CORS/expired."""
+    url = request.args.get('url', '').strip()
+    if not url or not url.startswith('http'):
+        return '', 400
+    try:
+        import urllib.request as _req
+        _headers = {
+            'User-Agent': TIKTOK_UA,
+            'Referer': 'https://www.instagram.com/',
+        }
+        _r = _req.Request(url, headers=_headers)
+        _resp = _req.urlopen(_r, timeout=8)
+        _data = _resp.read()
+        _ct = _resp.headers.get('Content-Type', 'image/jpeg')
+        from flask import Response as _Resp
+        return _Resp(_data, content_type=_ct)
+    except Exception:
+        return '', 404
 
 
 @app.route('/api/search', methods=['POST'])
@@ -1601,9 +1623,8 @@ def mp4_info_api():
             # Lapis 3: info root
             if not size_bytes:
                 size_bytes = info.get('filesize_approx') or info.get('filesize') or 0
-            # Lapis 4 (Facebook fallback): estimasi dari tbr × duration
-            # tbr = total bitrate dalam kbps
-            if not size_bytes and duration_s > 0:
+            # Lapis 4: estimasi tbr x duration khusus Instagram & Facebook
+            if not size_bytes and duration_s > 0 and platform in ('instagram', 'facebook'):
                 tbr = info.get('tbr') or 0
                 if not tbr and formats:
                     tbr = next((f.get('tbr') or 0 for f in reversed(formats) if f.get('tbr')), 0)
@@ -1642,6 +1663,10 @@ def mp4_info_api():
                 'facebook': 'Facebook', 'tiktok': 'TikTok'
             }
             raw_author = platform_names.get(platform, platform.title())
+
+        # Potong pipe dari nama (misal "Mokultur | Be the Cultured!!" -> "Mokultur")
+        if '|' in (raw_author or ''):
+            raw_author = raw_author.split('|')[0].strip()
 
         # Fallback ke fb_meta kalau author masih generik
         if platform == 'facebook' and fb_meta.get('author') and raw_author in ('Facebook', 'Unknown', 'www.facebook.com'):
