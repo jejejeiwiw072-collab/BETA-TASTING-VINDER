@@ -219,6 +219,10 @@ def fetch_video_stream(url, fallback_url=None):
         raise
 
 
+# =============================================================================
+# TIKTOK FUNCTIONS
+# =============================================================================
+
 def get_meta_via_tikwm(tiktok_url, retries=3, for_audio=False):
     """
     Ambil metadata video dari TikWM API dengan retry otomatis.
@@ -552,7 +556,7 @@ def process_mp3_pipeline(url, title, out_tmpl, progress_cb=None):
                 cover_url = cover_url2
             if not final_title or final_title == 'audio':
                 final_title = tikwm_title or title
-            if not video_url:
+                      if not video_url:
                 raise RuntimeError("Gagal ambil audio maupun video dari TikTok")
             emit(35, "[MP3] Download & extract audio dari video...")
             download_audio_direct(video_url, out_mp3)
@@ -586,6 +590,10 @@ def process_mp3_pipeline(url, title, out_tmpl, progress_cb=None):
 
 # =============================================================================
 # ROUTES
+# =============================================================================
+
+# =============================================================================
+# MAIN ROUTES
 # =============================================================================
 
 @app.route('/')
@@ -683,9 +691,6 @@ def search_videos_api():
     except Exception as e:
         logger.error(f"Search Error: {str(e)}")
         return jsonify({"status": "error", "msg": str(e)})
-
-
-
 
 
 # Platform yang didukung - FIX agar URL asing tidak nyasar ke static files
@@ -798,6 +803,10 @@ def get_video_api():
     except Exception as e:
         return f"Error: {str(e)}", 500
 
+
+# =============================================================================
+# MP3 FUNCTIONS
+# =============================================================================
 
 @app.route('/api/mp3_progress')
 def mp3_progress_api():
@@ -970,8 +979,6 @@ def get_mp3_api():
         return f"Error: {str(e)}", 500
 
 
-
-
 @app.route('/api/fast_mp3', methods=['GET', 'POST'])
 def fast_mp3_api():
     """
@@ -1096,7 +1103,7 @@ def fast_mp3_api():
         cover_thread = threading.Thread(target=extract_cover_fast, daemon=True)
         cover_thread.start()
 
-        # ── Encode audio via ffmpeg pipe ──
+                # ── Encode audio via ffmpeg pipe ──
         audio_headers = TIKTOK_HEADERS.copy()
         audio_headers['Range'] = 'bytes=0-'
 
@@ -1199,6 +1206,10 @@ MP4_SUPPORTED_PLATFORMS = [
     'facebook.com', 'fb.watch', 'www.facebook.com', 'fb.com',
 ]
 
+# =============================================================================
+# PLATFORM DETECTION & MP4 HELPERS
+# =============================================================================
+
 def detect_platform(url):
     """Detect platform dari URL. Return string platform name."""
     url_lower = url.lower()
@@ -1290,6 +1301,10 @@ def download_video_ytdlp(url, out_mp4, quality='best', progress_cb=None):
     emit(85, "[OK] Download selesai, siapkan file...")
     return final_title
 
+
+# =============================================================================
+# MP4 DOWNLOAD API
+# =============================================================================
 
 @app.route('/api/download_mp4', methods=['GET', 'POST'])
 def download_mp4_api():
@@ -1425,6 +1440,10 @@ def download_mp4_api():
             pass
         return jsonify({"status": "error", "msg": str(e)}), 500
 
+
+# =============================================================================
+# MP4 INFO API (Preview metadata sebelum download)
+# =============================================================================
 
 @app.route('/api/mp4_info', methods=['GET', 'POST'])
 def mp4_info_api():
@@ -1601,7 +1620,7 @@ def mp4_info_api():
         # ── Ukuran file ──
         size_bytes = 0
         try:
-            # Lapis 1: filesize/filesize_approx dari format video
+                        # Lapis 1: filesize/filesize_approx dari format video
             for fmt in reversed(formats):
                 fs = fmt.get('filesize') or fmt.get('filesize_approx') or 0
                 if fs and fmt.get('vcodec') not in (None, 'none'):
@@ -1712,94 +1731,6 @@ def mp4_info_api():
     except Exception as e:
         logger.error(f"[ERR] mp4_info error: {e}")
         return jsonify({"status": "error", "msg": str(e)}), 500
-
-
-# =============================================================================
-# DEBUG ENDPOINT — HAPUS SETELAH SELESAI DEBUG
-# =============================================================================
-
-@app.route('/api/debug_fb', methods=['GET', 'POST'])
-def debug_fb():
-    """
-    Debug endpoint untuk lihat raw yt-dlp output dari Facebook URL.
-    Usage: GET /api/debug_fb?url=https://v.facebook.com/share/r/...
-    HAPUS endpoint ini setelah selesai debugging!
-    """
-    if request.method == 'POST':
-        data = request.get_json(force=True) or {}
-        url  = data.get('url', '').strip()
-    else:
-        url = request.args.get('url', '').strip()
-
-    if not url:
-        return jsonify({"error": "url param kosong"}), 400
-
-    result = {"original_url": url}
-
-    # Step 1: coba follow redirect manual
-    try:
-        import urllib.request as _req
-        r = _req.urlopen(
-            _req.Request(url, headers={'User-Agent': TIKTOK_UA}),
-            timeout=8
-        )
-        result["resolved_url"] = r.url
-        result["redirect_ok"] = (r.url != url)
-        url_for_ytdlp = r.url
-    except Exception as e:
-        result["redirect_error"] = str(e)
-        url_for_ytdlp = url
-
-    # Step 2: yt-dlp extract_info
-    try:
-        ydl_opts = {
-            'quiet': True,
-            'no_warnings': True,
-            'noplaylist': True,
-            'user_agent': TIKTOK_UA,
-            'http_headers': DEFAULT_HEADERS,
-        }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url_for_ytdlp, download=False)
-
-        # Field-field penting untuk preview
-        fields = [
-            'title', 'uploader', 'channel', 'creator', 'uploader_id',
-            'uploader_url', 'page_name', 'duration', 'duration_string',
-            'tbr', 'vbr', 'abr', 'filesize', 'filesize_approx',
-            'thumbnail', 'extractor', 'webpage_url', 'description'
-        ]
-        result["info_fields"] = {k: info.get(k) for k in fields}
-
-        # Summary format (10 format pertama)
-        formats = info.get('formats') or []
-        result["formats_count"] = len(formats)
-        result["formats_sample"] = [
-            {
-                "format_id": f.get('format_id'),
-                "ext": f.get('ext'),
-                "vcodec": f.get('vcodec'),
-                "acodec": f.get('acodec'),
-                "height": f.get('height'),
-                "tbr": f.get('tbr'),
-                "vbr": f.get('vbr'),
-                "abr": f.get('abr'),
-                "filesize": f.get('filesize'),
-                "filesize_approx": f.get('filesize_approx'),
-                "duration": f.get('duration'),
-            }
-            for f in formats[-10:]  # 10 format terakhir (biasanya yang terbaik)
-        ]
-
-        # Thumbnails
-        thumbnails = info.get('thumbnails') or []
-        result["thumbnails_count"] = len(thumbnails)
-        result["thumbnails_sample"] = thumbnails[:3]
-
-    except Exception as e:
-        result["ytdlp_error"] = str(e)
-
-    return jsonify(result), 200
 
 
 # =============================================================================
