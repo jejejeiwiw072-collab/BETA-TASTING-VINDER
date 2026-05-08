@@ -1,6 +1,8 @@
 import os
 import re
 import time
+import uuid
+import threading
 import requests
 import logging
 import subprocess
@@ -19,31 +21,103 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def mask_url(url, keep=50):
+    """
+    Masking URL untuk log — potong sebelum query string (?token=...).
+    Hanya tampilkan domain + N karakter pertama path.
+    Contoh: https://v19.tiktok.com/video/tos/abc123...[masked]
+    """
+    if not url:
+        return '[empty url]'
+    try:
+        base = url.split('?')[0]
+        if len(base) > keep:
+            return base[:keep] + '...[masked]'
+        return base
+    except Exception:
+        return '[url]' 
+
+
 # =============================================================================
 # TELEGRAM NOTIF
 # =============================================================================
 
 TELEGRAM_NOTIF_ENABLED = True # Ganti ke True untuk aktifkan notif Telegram                                                                  #  Ganti ke  False untuk matikan notif Telegram
 
+
+# =============================================================================
+# FIX #1: Token Telegram dipindah ke environment variable
+# Set di Railway/server: TELEGRAM_TOKEN dan TELEGRAM_CHAT_ID
+# JANGAN hardcode token di source code!
+# =============================================================================
+_TELEGRAM_TOKEN   = os.environ.get("TELEGRAM_TOKEN")
+_TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+
+if TELEGRAM_NOTIF_ENABLED and (not _TELEGRAM_TOKEN or not _TELEGRAM_CHAT_ID):
+    logger.warning(
+        "[NOTIF] TELEGRAM_TOKEN atau TELEGRAM_CHAT_ID tidak ditemukan di env. "
+        "Notif Telegram dinonaktifkan. Set env var untuk mengaktifkan."
+    )
+    TELEGRAM_NOTIF_ENABLED = False
+
 def kirim_notif(pesan):
     """Kirim notifikasi ke Telegram Bot."""
     if not TELEGRAM_NOTIF_ENABLED:
         return
     try:
-        TOKEN   = "8690695346:AAG80VMrIw-s4vQUg5CeYbyG0H1Ecn-CsME"
-        CHAT_ID = "8279166856"
         requests.post(
-            f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-            data={"chat_id": CHAT_ID, "text": pesan},
+            f"https://api.telegram.org/bot{_TELEGRAM_TOKEN}/sendMessage",
+            data={"chat_id": _TELEGRAM_CHAT_ID, "text": pesan},
             timeout=3
         )
     except Exception as e:
         logger.warning(f"[NOTIF] Gagal kirim notif Telegram: {e}")
 
-app = Flask(__name__, static_folder='.', static_url_path='')
+app = Flask(__name__, static_folder='static', static_url_path='')
+# FIX #7: static_folder dipindah dari '.' (root) ke folder 'static' tersendiri
+# Sebelumnya semua file di root (termasuk vinder_fixed.py, .env) bisa diakses via URL
+
+# FIX #2: CORS dibatasi ke origin tertentu saja
+# Tambahkan domain produksi lo ke list ini, atau set env var CORS_ORIGINS
+_ALLOWED_ORIGINS = os.environ.get(
+    "CORS_ORIGINS",
+    "http://localhost:5000,http://127.0.0.1:5000"   # default: hanya local dev
+).split(",")
 
 from flask_cors import CORS
-CORS(app)
+CORS(app, origins=_ALLOWED_ORIGINS)
+
+# =============================================================================
+# RATE LIMITING
+# =============================================================================
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=[],
+    storage_uri="memory://",
+)
+
+def on_rate_limit_exceeded(e):
+    ip   = get_remote_address()
+    path = request.path
+    batas_map = {
+        '/api/search':       '10x/menit',
+        '/api/download_url': '20x/menit',
+        '/api/fast_mp3':     '15x/menit',
+    }
+    batas = batas_map.get(path, 'batas limit')
+    kirim_notif(
+        f"⚠️ Rate Limit Terlampaui!\n"
+        f"User IP: {ip}\n"
+        f"Endpoint: {path}\n"
+        f"Melebihi batas {batas}"
+    )
+    return "Terlalu banyak permintaan. Silakan tunggu sebentar.", 429
+
+app.register_error_handler(429, on_rate_limit_exceeded)
 
 TIKTOK_UA = (
     "com.zhiliaoapp.musically/2022505030 "
@@ -65,6 +139,16 @@ TIKTOK_HEADERS = {
 }
 
 session = requests.Session()
+
+# =============================================================================
+# PRE-FETCHING CONNECTION POOL
+# Perbesar pool koneksi agar request paralel ke TikWM/CDN tidak ngantre
+# Default requests: pool_connections=10, pool_maxsize=10
+# =============================================================================
+from requests.adapters import HTTPAdapter
+_adapter = HTTPAdapter(pool_connections=20, pool_maxsize=50)
+session.mount('https://', _adapter)
+session.mount('http://',  _adapter)
 
 
 # =============================================================================
@@ -122,7 +206,7 @@ def resolve_tiktok_url(url):
     """Resolve short URL (vt.tiktok.com / vm.tiktok.com) ke URL panjang."""
     try:
         r = session.head(url, allow_redirects=True, timeout=10)
-        logger.info(f"[URL] Resolved: {url} -> {r.url}")
+        logger.info(f"[URL] Resolved: {mask_url(url)} -> {mask_url(r.url)}")
         return r.url
     except Exception as e:
         logger.warning(f"[WARN] Gagal resolve URL: {e}")
@@ -170,6 +254,46 @@ def do_cleanup(out_tmpl):
                 os.remove(path)
             except Exception:
                 pass
+
+
+# =============================================================================
+# GLOBAL ORPHAN CLEANUP
+# Background thread: hapus file /tmp/vinder_* yang umurnya > 60 menit
+# Jalan otomatis tiap 10 menit, menangani kasus user nutup browser di tengah download
+# =============================================================================
+
+def orphan_cleanup_loop():
+    """Scan dan hapus file temp vinder yang terbengkalai di /tmp."""
+    MAX_AGE_SECONDS = 60 * 60       # 60 menit
+    INTERVAL        = 10 * 60       # cek tiap 10 menit
+    SUFFIXES        = ['.mp3', '.mp3.raw', '_cover.jpg', '.ready', '.thumb.jpg']
+
+    while True:
+        try:
+            now = time.time()
+            deleted = 0
+            for fname in os.listdir('/tmp'):
+                if not fname.startswith('vinder_'):
+                    continue
+                fpath = os.path.join('/tmp', fname)
+                try:
+                    age = now - os.path.getmtime(fpath)
+                    if age > MAX_AGE_SECONDS:
+                        os.remove(fpath)
+                        deleted += 1
+                except Exception:
+                    pass
+            if deleted:
+                logger.info(f"[CLEANUP] Orphan cleanup: {deleted} file temp dihapus dari /tmp")
+                kirim_notif(f"🧹 Orphan Cleanup!\n{deleted} file temp berhasil dihapus dari /tmp")
+        except Exception as e:
+            logger.warning(f"[CLEANUP] Orphan cleanup error: {e}")
+        time.sleep(INTERVAL)
+
+# Jalankan background thread saat server start
+_cleanup_thread = threading.Thread(target=orphan_cleanup_loop, daemon=True)
+_cleanup_thread.start()
+logger.info("[CLEANUP] Orphan cleanup thread aktif (interval 10 menit, max age 60 menit)")
 
 
 # =============================================================================
@@ -246,8 +370,8 @@ def get_meta_via_tikwm(tiktok_url, retries=3, for_audio=False):
                 cover_plain  = v.get('cover')
                 cover_url    = origin_cover or cover_plain
                 title        = v.get('title', 'audio')
-                logger.info(f"[IMG] TikWM origin_cover: {origin_cover[:80] if origin_cover else 'NONE'}")
-                logger.info(f"[IMG] TikWM cover: {cover_plain[:80] if cover_plain else 'NONE'}")
+                logger.info(f"[IMG] Cover art tersedia: {'Ya' if origin_cover else 'Tidak'}")
+                logger.info(f"[IMG] Cover fallback tersedia: {'Ya' if cover_plain else 'Tidak'}")
                 return video_url, cover_url, title
             else:
                 logger.warning(f"[WARN] TikWM code={data.get('code')} msg={data.get('msg')} (attempt {attempt})")
@@ -306,7 +430,7 @@ def download_audio_direct(audio_url, out_mp3):
     headers = TIKTOK_HEADERS.copy()
     headers["Range"] = "bytes=0-"
 
-    logger.info(f"[DL] Pipe audio ke ffmpeg: {audio_url[:80]}...")
+    logger.info(f"[DL] Pipe audio ke ffmpeg: {mask_url(audio_url)}")
 
     # Detect bitrate asli dulu sebelum download
     bitrate = detect_audio_bitrate(audio_url, headers)
@@ -346,7 +470,7 @@ def download_audio_direct(audio_url, out_mp3):
 
     if proc.returncode != 0:
         err = proc.stderr.read().decode(errors='ignore')[-300:]
-        raise RuntimeError(f"ffmpeg pipe->mp3 gagal: {err}")
+        raise RuntimeError("Gagal memproses audio, silakan coba lagi.")
 
     size_mb = os.path.getsize(out_mp3) / 1024 / 1024
     logger.info(f"[MP3] Encode selesai: {size_mb:.2f} MB ({bitrate})")
@@ -375,7 +499,7 @@ def download_audio_ytdlp(url, out_mp3):
         'keepvideo': False,
     }
 
-    logger.info(f"[DL] yt-dlp bestaudio: {url[:80]}...")
+    logger.info(f"[DL] Proses audio bestaudio: {mask_url(url)}")
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([url])
 
@@ -394,7 +518,7 @@ def download_audio_ytdlp(url, out_mp3):
             os.replace(candidates[0], out_mp3)
             logger.info(f"[OK] yt-dlp audio (fallback rename): {out_mp3}")
         else:
-            raise RuntimeError("yt-dlp tidak menghasilkan file audio")
+            raise RuntimeError("Gagal memproses audio, silakan coba lagi.")
 
 
 def download_cover(cover_url, cover_path):
@@ -434,8 +558,7 @@ def embed_cover(mp3_path, cover_path):
             capture_output=True,
             timeout=15,
         )
-
-        # Step 2: embed via mutagen ID3 APIC tag langsung ke MP3
+             # Step 2: embed via mutagen ID3 APIC tag langsung ke MP3
         # Mutagen tulis ID3 tag native - tidak ada container MP4, tidak ada video stream
         from mutagen.id3 import ID3, APIC, error as ID3Error
 
@@ -527,9 +650,9 @@ def process_mp3_pipeline(url, title, out_tmpl, progress_cb=None):
 
     if is_tiktok:
         # --- TIKTOK: extract audio stream URL via yt-dlp, lalu download langsung ---
-        emit(15, "[API] Ambil metadata & audio stream URL...")
+        emit(15, "Mengambil informasi video...")
 
-        # Coba yt-dlp dulu untuk audio stream asli
+            # Coba yt-dlp dulu untuk audio stream asli
         audio_url, cover_url, api_title = get_tiktok_audio_url(url)
         final_title = api_title or title
 
@@ -541,25 +664,25 @@ def process_mp3_pipeline(url, title, out_tmpl, progress_cb=None):
                 final_title = tikwm_title or title
 
         if audio_url:
-            emit(30, "[MP3] Download audio stream langsung...")
+            emit(30, "Mengunduh audio...")
             download_audio_direct(audio_url, out_mp3)
         else:
             # Terakhir: fallback ke TikWM video URL + extract audio
             # for_audio=True -> ambil play/SD bukan hdplay, audio track identik tapi stream lebih ringan
-            emit(20, "[API] Fallback: ambil URL dari TikWM...")
+            emit(20, "Memproses video...")
             video_url, cover_url2, tikwm_title = get_meta_via_tikwm(url, for_audio=True)
             if not cover_url:
                 cover_url = cover_url2
             if not final_title or final_title == 'audio':
                 final_title = tikwm_title or title
             if not video_url:
-                raise RuntimeError("Gagal ambil audio maupun video dari TikTok")
-            emit(35, "[MP3] Download & extract audio dari video...")
+                raise RuntimeError("Gagal mengambil video, silakan coba lagi.")
+            emit(35, "Mengunduh audio...")
             download_audio_direct(video_url, out_mp3)
 
     else:
                 # --- PLATFORM LAIN: yt-dlp bestaudio + FFmpegExtractAudio ---
-        emit(15, "[API] Ambil audio stream via yt-dlp...")
+        emit(15, "Mengambil informasi video...")
         final_title = title
 
         try:
@@ -571,13 +694,13 @@ def process_mp3_pipeline(url, title, out_tmpl, progress_cb=None):
         except Exception:
             cover_url = None
 
-        emit(30, "[MP3] Download audio langsung (bestaudio)...")
+        emit(30, "Mengunduh audio...")
         download_audio_ytdlp(url, out_mp3)
 
     # Embed cover art kalau ada
     if cover_url:
         cover_path = out_tmpl + '_cover.jpg'
-        emit(88, "[IMG] Embed cover art...")
+        emit(88, "Menyiapkan file...")
         if download_cover(cover_url, cover_path):
             embed_cover(out_mp3, cover_path)
 
@@ -590,17 +713,29 @@ def process_mp3_pipeline(url, title, out_tmpl, progress_cb=None):
 
 @app.route('/')
 def index():
-    kirim_notif("Visitor masuk ke Web Vinder")
+    ip = request.headers.get('X-Forwarded-For', request.remote_addr or 'Unknown').split(',')[0].strip()
+    # kirim_notif(f"🌐 Visitor masuk!\nIP: {ip}")
     return send_file('vinder.html')
 
 
+@app.route('/api/ping')
+def ping():
+    """Keep-alive endpoint — dipanggil frontend tiap 4 menit biar Railway tidak sleep."""
+    try:
+        session.head('https://www.tikwm.com', timeout=5)
+    except Exception:
+        pass
+    return '', 204
+
+
 @app.route('/api/search', methods=['POST'])
+@limiter.limit('10 per minute')
 def search_videos_api():
     data       = request.json
     keyword    = data.get('keyword')
     limit      = data.get('limit', 10)
     filter_str = data.get('filter', '').strip()
-    kirim_notif(f"User nyari keyword: {keyword}")
+    # kirim_notif(f"User nyari keyword: {keyword}")
     logger.info(f"[SEARCH] Searching for: {keyword} | filter: '{filter_str}'")
 
     filter_op, filter_detik = parse_filter_durasi(filter_str)
@@ -668,20 +803,63 @@ SUPPORTED_PLATFORMS = [
 def is_supported_url(url):
     if not url:
         return False
-    return any(p in url for p in SUPPORTED_PLATFORMS)
+    try:
+        netloc = urlparse(url).netloc.lower()
+        netloc = netloc.split(":")[0]  # hapus port kalau ada
+        return any(netloc == p or netloc.endswith("." + p) for p in SUPPORTED_PLATFORMS)
+    except Exception:
+        return False
+
+
+# FIX #3 & #7: Validasi URL untuk mencegah SSRF dan skema berbahaya
+# Blokir: file://, ftp://, http://localhost, http://127.x, http://169.254.x (AWS metadata)
+import ipaddress
+from urllib.parse import urlparse
+
+def is_safe_external_url(url):
+    """
+    Cek apakah URL aman untuk di-fetch oleh server.
+    Return False jika URL mengarah ke resource internal/private.
+    """
+    if not url:
+        return False
+    try:
+        parsed = urlparse(url)
+        # Hanya izinkan http dan https
+        if parsed.scheme not in ('http', 'https'):
+            logger.warning(f"[SSRF] Blokir skema berbahaya: {parsed.scheme}")
+            return False
+        hostname = parsed.hostname or ''
+        # Blokir localhost dan variasi
+        if hostname in ('localhost', ''):
+            logger.warning(f"[SSRF] Blokir hostname: {hostname}")
+            return False
+        # Blokir IP private/loopback/link-local
+        try:
+            ip = ipaddress.ip_address(hostname)
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                logger.warning(f"[SSRF] Blokir IP internal: {hostname}")
+                return False
+        except ValueError:
+            pass  # bukan IP, hostname biasa - lanjut
+        return True
+    except Exception as e:
+        logger.warning(f"[SSRF] Gagal parse URL: {e}")
+        return False
 
 
 @app.route('/api/download_url', methods=['POST'])
+@limiter.limit('20 per minute')
 def download_url_api():
     data      = request.json
     url_input = data.get('url', '').strip()
-    logger.info(f"[URL] Processing: {url_input}")
+    logger.info(f"[URL] Processing: {mask_url(url_input)}")
 
     # FIX: tolak URL platform yang tidak didukung (Pinterest, dll)
     # Sebelumnya Pinterest URL lolos ke yt_dlp dan sering menyebabkan
     # Flask fallback serve vinder.html sebagai file download
     if not is_supported_url(url_input):
-        logger.warning(f"[WARN] Platform tidak didukung: {url_input}")
+        logger.warning(f"[WARN] Platform tidak didukung: {mask_url(url_input)}")
         return jsonify({
             "status": "error",
             "msg":    "Platform tidak didukung. Vinder mendukung: TikTok, YouTube, Instagram, Twitter/X, Facebook."
@@ -701,6 +879,25 @@ def download_url_api():
             resp = session.get(f"https://www.tikwm.com/api/?url={url_input}", timeout=15).json()
             if resp.get('code') == 0:
                 v = resp['data']
+
+                # Deteksi slideshow: ada field 'images' (array foto) dan tidak ada video stream
+                images     = v.get('images') or []
+                play_url   = v.get('play')
+                is_slideshow = bool(images)
+
+                if is_slideshow:
+                    logger.info(f"[SLIDESHOW] Konten foto terdeteksi ({len(images)} gambar): {url_input[-40:]}")
+                    # kirim_notif(f"📸 Slideshow terdeteksi!\nURL: {url_input[-60:]}\nJumlah foto: {len(images)}")
+                    return jsonify({
+                        "status":       "slideshow",
+                        "title":        v.get('title', 'TikTok Slideshow'),
+                        "cover":        v.get('origin_cover') or v.get('cover'),
+                        "author":       v.get('author', {}).get('nickname', 'User'),
+                        "duration":     f"{v.get('duration', 0)}s",
+                        "size":         f"{v.get('size', 0) / 1024 / 1024:.2f}MB",
+                        "image_count":  len(images),
+                    })
+
                 result = {
                     "status":   "success",
                     "title":    v.get('title', 'TikTok Video'),
@@ -708,7 +905,7 @@ def download_url_api():
                     "author":   v.get('author', {}).get('nickname', 'User'),
                     "duration": f"{v.get('duration', 0)}s",
                     "size":     f"{v.get('size', 0) / 1024 / 1024:.2f}MB",
-                    "play":     v.get('play'),
+                    "play":     play_url,
                     "hdplay":   v.get('hdplay'),
                 }
 
@@ -739,20 +936,26 @@ def get_video_api():
     video_url    = request.args.get('url')
     fallback_url = request.args.get('fallback')
     title        = request.args.get('title', 'video')
-    kirim_notif(f"User download MP4: {title}")
+    # kirim_notif(f"User download MP4: {title}")
 
     if not video_url:
         return "URL Kosong", 400
+
+    # FIX #3: Cek SSRF - tolak URL internal/berbahaya
+    if not is_safe_external_url(video_url):
+        return "URL tidak valid atau tidak diizinkan.", 400
+    if fallback_url and not is_safe_external_url(fallback_url):
+        fallback_url = None
 
     try:
         r, _ = fetch_video_stream(video_url, fallback_url)
 
         if r is None or r.status_code >= 400:
-            return "Gagal: Video tidak ditemukan atau link kadaluarsa.", 403
+            return "Video tidak ditemukan atau link sudah kadaluarsa.", 403
 
         content_type = r.headers.get('Content-Type', '').lower()
         if 'text/html' in content_type:
-            return "Gagal: Server mengirimkan file korup (HTML).", 403
+            return "Video tidak dapat diakses, silakan coba lagi.", 403
 
         fname = f'[Vinder].{safe_filename(title)}.mp4'
         return Response(
@@ -765,7 +968,9 @@ def get_video_api():
         )
 
     except Exception as e:
-        return f"Error: {str(e)}", 500
+        # FIX #6: Jangan kembalikan detail error ke user (mencegah info disclosure)
+        logger.error(f"get_video error: {str(e)}")
+        return "Terjadi kesalahan saat memproses video. Silakan coba lagi.", 500
 
 
 @app.route('/api/mp3_progress')
@@ -782,11 +987,15 @@ def mp3_progress_api():
     if not tiktok_url:
         return "URL Kosong", 400
 
+    # FIX #3: Cek SSRF dan platform whitelist
+    if not is_safe_external_url(tiktok_url) or not is_supported_url(tiktok_url):
+        return "URL tidak valid atau platform tidak didukung.", 400
+
     def generate():
         def send(pct, msg):
             return f"data: {pct}|{msg}\n\n"
 
-        uid      = str(int(time.time() * 1000))
+        uid      = str(uuid.uuid4())
         out_tmpl = f'/tmp/vinder_{uid}'
 
         # FIX: gunakan queue + thread agar SSE bisa yield progress real-time
@@ -801,7 +1010,7 @@ def mp3_progress_api():
 
         def run_pipeline():
             try:
-                emit_sse(5, "[URL] Resolve URL...")
+                emit_sse(5, "Memeriksa link video...")
                 url = tiktok_url
                 if 'vt.tiktok.com' in url or 'vm.tiktok.com' in url:
                     url = resolve_tiktok_url(url)
@@ -810,21 +1019,22 @@ def mp3_progress_api():
 
 
                 if not os.path.exists(out_mp3):
-                    q.put(send(-1, "[ERR] File MP3 tidak berhasil dibuat"))
+                    q.put(send(-1, "Gagal memproses audio, silakan coba lagi."))
                     do_cleanup(out_tmpl)
                     q.put(None)
                     return
 
                 fname = f"[Vinder].{safe_filename(final_title)}.mp3"
-                emit_sse(95, "[PKG] Siapkan file...")
+                emit_sse(95, "Menyiapkan file untuk diunduh...")
                 with open(out_tmpl + '.ready', 'w') as f:
                     f.write(fname)
 
                 q.put(send(100, f"[OK] DONE|{uid}|{fname}"))
             except Exception as e:
+                # FIX #6: Log detail error di server, kirim pesan generik ke client
                 logger.error(f"SSE MP3 Error: {e}")
                 do_cleanup(out_tmpl)
-                q.put(send(-1, f"[ERR] Error: {str(e)[:100]}"))
+                q.put(send(-1, "Gagal memproses audio, silakan coba lagi."))
             finally:
                 q.put(None)  # sentinel = selesai
 
@@ -835,7 +1045,7 @@ def mp3_progress_api():
             try:
                 item = q.get(timeout=120)
             except queue.Empty:
-                yield send(-1, "[ERR] Timeout: proses terlalu lama")
+                yield send(-1, "Proses terlalu lama, silakan coba lagi.")
                 break
             if item is None:
                 break
@@ -854,9 +1064,11 @@ def mp3_progress_api():
 @app.route('/api/get_mp3_file')
 def get_mp3_file_api():
     """Ambil file MP3 yang sudah selesai diproses via SSE."""
-    uid = request.args.get('uid')
-    if not uid:
-        return "UID kosong", 400
+    uid = request.args.get('uid', '')
+    # FIX #5: Validasi uid format UUID (setelah migrasi dari timestamp ke uuid4)
+    # Cegah path traversal seperti uid='../etc/passwd'
+    if not uid or not re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$', uid):
+        return "UID tidak valid", 400
 
     out_tmpl  = f'/tmp/vinder_{uid}'
     out_mp3   = out_tmpl + '.mp3'
@@ -897,19 +1109,23 @@ def get_mp3_api():
     if not tiktok_url:
         return "URL Kosong", 400
 
+    # FIX #3: Cek SSRF sebelum fetch
+    if not is_safe_external_url(tiktok_url) or not is_supported_url(tiktok_url):
+        return "URL tidak valid atau platform tidak didukung.", 400
+
     if 'vt.tiktok.com' in tiktok_url or 'vm.tiktok.com' in tiktok_url:
         tiktok_url = resolve_tiktok_url(tiktok_url)
 
-    uid      = str(int(time.time() * 1000))
+    uid      = str(uuid.uuid4())
     out_tmpl = f'/tmp/vinder_{uid}'
 
     try:
-        logger.info(f"[MP3] MP3 request: {tiktok_url}")
+        logger.info(f"[MP3] MP3 request: {mask_url(tiktok_url)}")
         out_mp3, final_title = process_mp3_pipeline(tiktok_url, title, out_tmpl)
 
         if not os.path.exists(out_mp3):
             do_cleanup(out_tmpl)
-            return "Gagal: File MP3 tidak berhasil dibuat.", 500
+            return "Gagal memproses audio, silakan coba lagi.", 500
 
         filename = f"[Vinder].{safe_filename(final_title)}.mp3"
         logger.info(f"[OK] Siap dikirim: {filename}")
@@ -934,14 +1150,16 @@ def get_mp3_api():
         )
 
     except Exception as e:
+        # FIX #6: Sembunyikan detail error dari user
         logger.error(f"MP3 Error: {str(e)}")
         do_cleanup(out_tmpl)
-        return f"Error: {str(e)}", 500
+        return "Terjadi kesalahan saat memproses audio. Silakan coba lagi.", 500
 
 
 
 
 @app.route('/api/fast_mp3', methods=['GET', 'POST'])
+@limiter.limit('15 per minute')
 def fast_mp3_api():
     """
     FAST MP3 - El Kedips Edition (Maximum Speed)
@@ -962,10 +1180,14 @@ def fast_mp3_api():
         tiktok_url = request.args.get('url', '').strip()
         title      = request.args.get('title', 'audio')
 
-    kirim_notif(f"User download MP3: {tiktok_url}")
+    # kirim_notif(f"User download MP3: {tiktok_url}")
 
     if not tiktok_url:
         return "URL Kosong", 400
+
+    # FIX #3: Cek SSRF dan platform whitelist sebelum fetch apapun
+    if not is_safe_external_url(tiktok_url) or not is_supported_url(tiktok_url):
+        return "URL tidak valid atau platform tidak didukung.", 400
 
     is_short = 'vt.tiktok.com' in tiktok_url or 'vm.tiktok.com' in tiktok_url
     is_tiktok = is_short or 'tiktok.com' in tiktok_url
@@ -981,8 +1203,8 @@ def fast_mp3_api():
                 tiktok_url = resolve_tiktok_url(tiktok_url)
 
             # Selalu fetch langsung ke TikWM - tanpa cache
-            logger.info(f"[FETCH] Fresh fetch TikWM untuk: {tiktok_url[-40:]}")
-            vid_url, tikwm_cover, tikwm_title = get_meta_via_tikwm(tiktok_url, for_audio=True)
+            logger.info(f"[FETCH] Ambil metadata video: {mask_url(tiktok_url)}")
+            vid_url, _, tikwm_title = get_meta_via_tikwm(tiktok_url, for_audio=True)
             video_url   = vid_url
             audio_url   = vid_url
             final_title = tikwm_title or title
@@ -1004,68 +1226,9 @@ def fast_mp3_api():
                 final_title = info.get('title', title)
 
         if not audio_url:
-            return "Gagal: tidak bisa ambil URL audio", 500
+            return "Gagal mengambil audio, silakan coba lagi.", 500
 
-        # Cover: download thumbnail dari TikWM (clean, tanpa watermark TikTok)
-        # Jauh lebih cepat dari extract frame ffmpeg + hasilnya bersih
-        cover_raw  = [None]
-        cover_done = threading.Event()
-        _tikwm_cover = tikwm_cover if is_tiktok else None
-
-        def extract_cover_fast():
-            """Download thumbnail clean dari TikWM. Fallback ke frame ffmpeg kalau gagal."""
-            try:
-                if _tikwm_cover:
-                    r_cover = session.get(_tikwm_cover, timeout=8)
-                    if r_cover.status_code == 200 and len(r_cover.content) > 500:
-                        cover_raw[0] = r_cover.content
-                        logger.info(f"[IMG] TikWM thumbnail OK ({len(cover_raw[0])//1024}KB)")
-                        return
-                    logger.warning(f"[WARN] TikWM thumbnail gagal ({r_cover.status_code}), fallback ke frame")
-
-                # Fallback: extract frame dari video (non-TikTok atau TikWM gagal)
-                src = video_url or audio_url
-                frame_proc = subprocess.run(
-                    [
-                        'ffmpeg', '-y',
-                        '-ss', '00:00:05',
-                        '-i', src,
-                        '-vframes', '1',
-                        '-vf', 'crop=min(iw\\,ih):min(iw\\,ih),scale=500:500',
-                        '-f', 'image2',
-                        '-vcodec', 'mjpeg',
-                        'pipe:1',
-                    ],
-                    capture_output=True, timeout=12,
-                )
-                if frame_proc.returncode == 0 and len(frame_proc.stdout) > 500:
-                    cover_raw[0] = frame_proc.stdout
-                    logger.info(f"[IMG] Frame cover fallback OK ({len(cover_raw[0])//1024}KB)")
-                else:
-                    frame_proc2 = subprocess.run(
-                        [
-                            'ffmpeg', '-y',
-                            '-ss', '00:00:01',
-                            '-i', src,
-                            '-vframes', '1',
-                            '-vf', 'crop=min(iw\\,ih):min(iw\\,ih),scale=500:500',
-                            '-f', 'image2', '-vcodec', 'mjpeg', 'pipe:1',
-                        ],
-                        capture_output=True, timeout=10,
-                    )
-                    if frame_proc2.returncode == 0 and len(frame_proc2.stdout) > 500:
-                        cover_raw[0] = frame_proc2.stdout
-                        logger.info(f"[IMG] Frame fallback detik-1 OK ({len(cover_raw[0])//1024}KB)")
-                    else:
-                        logger.warning("[WARN] Frame extract gagal semua")
-            except Exception as e:
-                logger.warning(f"[WARN] Cover error: {e}")
-            finally:
-                cover_done.set()
-
-        # OPTIMASI 4: cover + audio paralel
-        cover_thread = threading.Thread(target=extract_cover_fast, daemon=True)
-        cover_thread.start()
+        # Cover dihapus — tidak ada frame extraction
 
         # ── Encode audio via ffmpeg pipe ──
         audio_headers = TIKTOK_HEADERS.copy()
@@ -1073,9 +1236,12 @@ def fast_mp3_api():
 
         r = session.get(audio_url, stream=True, timeout=30, headers=audio_headers, allow_redirects=True)
         if r.status_code >= 400:
-            return f"Gagal: CDN return {r.status_code}", 502
+            return "Video tidak dapat diakses, silakan coba lagi.", 502
 
-        tmp_mp3 = tempfile.mktemp(suffix='.mp3')
+        # FIX #8: Ganti mktemp() yang deprecated dan tidak aman (race condition)
+        # mkstemp() langsung buat file + return file descriptor, aman dari race condition
+        _fd, tmp_mp3 = tempfile.mkstemp(suffix='.mp3')
+        os.close(_fd)  # tutup fd, ffmpeg akan buka file-nya sendiri
 
         proc = subprocess.Popen(
             ['ffmpeg', '-y', '-i', 'pipe:0', '-vn',
@@ -1098,28 +1264,7 @@ def fast_mp3_api():
 
         if proc.returncode != 0:
             err = proc.stderr.read().decode(errors='ignore')[-300:]
-            raise RuntimeError(f"ffmpeg encode gagal: {err}")
-
-        # Tunggu cover (max 3 detik — audio encode biasanya lebih lama)
-        cover_done.wait(timeout=3)
-
-               # ── Embed cover via mutagen ──
-        if cover_raw[0]:
-            try:
-                from mutagen.id3 import ID3, APIC, error as ID3Error
-                try:
-                    tags = ID3(tmp_mp3)
-                except ID3Error:
-                    tags = ID3()
-                tags.add(APIC(
-                    encoding=3, mime='image/jpeg',
-                    type=3, desc='Cover',
-                    data=cover_raw[0],
-                ))
-                tags.save(tmp_mp3, v2_version=3)
-                logger.info(f"[IMG] Cover embed OK ({len(cover_raw[0])//1024}KB)")
-            except Exception as e:
-                logger.warning(f"[WARN] Cover embed gagal: {e}")
+            raise RuntimeError("Gagal memproses audio, silakan coba lagi.")
 
         # ── Stream MP3 ke browser ──
         filename  = f"[Vinder].{safe_filename(final_title)}.mp3"
@@ -1150,14 +1295,215 @@ def fast_mp3_api():
         )
 
     except Exception as e:
+        # FIX #6: Sembunyikan detail error dari user
         logger.error(f"fast_mp3 error: {e}")
-        return f"Error: {str(e)}", 500
+        return "Terjadi kesalahan saat memproses audio. Silakan coba lagi.", 500
+
+# =============================================================================
+# DAILY HEALTH + AI MESSAGE
+# =============================================================================
+
+_GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+_HEALTH_SAMPLE_URL = "https://vt.tiktok.com/ZS9GBdy9y/"
+
+_PESAN_SUKSES_DAILY = [
+    "🟢 Vinder masih hidup bro, aman!",
+    "✅ Cek harian kelar — downloader jalan normal, santuy~",
+    "💪 Semua sistem OK, TikWM nurut hari ini.",
+    "🎯 Health check passed! Vinder sehat walafiat.",
+    "🚀 Server masih ngebut, GK ada masalah hari ini.",
+    "😎 Dicek udah, aman. Vinder lagi on fire!",
+    "🟢 TikWM kooperatif, link download keluar normal.",
+    "✅ Vinder hidup & sehat — laporan harian beres.",
+    "🔥 Semua OK boss, sistem berjalan mulus.",
+    "💡 Cek harian: passed! Ga ada yang perlu dikhawatirin.",
+]
+
+
+def _analisis_groq_daily(error_detail):
+    """Panggil Groq untuk analisis error health check harian."""
+    if not _GROQ_API_KEY:
+        logger.warning("[DAILY] GROQ_API_KEY tidak ditemukan, analisis skip.")
+        return "Analisis tidak tersedia (API key tidak ada)."
+    try:
+        resp = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {_GROQ_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "llama3-8b-8192",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "Kamu adalah analis sistem untuk website downloader TikTok bernama Vinder. "
+                            "Tugasmu: analisis error health check dengan singkat, jelas, dan dalam bahasa Indonesia santai. "
+                            "Maksimal 3 kalimat. Langsung ke poin, tidak perlu basa-basi."
+                        )
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Health check Vinder gagal. Detail error:\n{error_detail}"
+                    }
+                ],
+                "max_tokens": 200,
+                "temperature": 0.7
+            },
+            timeout=15
+        )
+        data = resp.json()
+        return data["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        logger.warning(f"[DAILY] Groq analisis gagal: {e}")
+        return "Analisis Groq tidak tersedia saat ini."
+
+
+def _groq_startup_ping():
+    """Panggil Groq sekali saat server ON, kirim ke Telegram sebagai test ping AI."""
+    if not _GROQ_API_KEY:
+        logger.warning("[DAILY] GROQ_API_KEY tidak ditemukan, startup ping skip.")
+        return
+    try:
+        resp = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {_GROQ_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "llama3-8b-8192",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "Kamu adalah asisten bot Vinder, website downloader TikTok. "
+                            "Kamu baru saja aktif. Kirim sapaan singkat, santai, bahasa Indonesia. "
+                            "Maksimal 2 kalimat. Langsung sapaan, tidak perlu basa-basi."
+                        )
+                    },
+                    {
+                        "role": "user",
+                        "content": "Hello apakah kamu bisa mendengarkan ku?"
+                    }
+                ],
+                "max_tokens": 100,
+                "temperature": 0.9
+            },
+            timeout=15
+        )
+        data = resp.json()
+        pesan_ai = data["choices"][0]["message"]["content"].strip()
+        kirim_notif(f"🤖 Vinder AI Online!\n{pesan_ai}")
+        logger.info("[DAILY] Startup AI ping berhasil dikirim ke Telegram.")
+    except Exception as e:
+        logger.warning(f"[DAILY] Startup AI ping gagal: {e}")
+
+
+def _run_daily_health_check():
+    """Jalankan health check harian: test TikWM, kirim hasil ke Telegram."""
+    import random as _random
+    from datetime import datetime as _datetime
+
+    logger.info(f"[DAILY] Mulai health check harian — {_datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    error_detail = None
+
+    try:
+        resp = requests.get(
+            f"https://www.tikwm.com/api/?url={_HEALTH_SAMPLE_URL}",
+            timeout=15
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        if data.get("code") != 0:
+            error_detail = (
+                f"TikWM return code={data.get('code')}, msg={data.get('msg')}.\n"
+                f"Raw response: {str(data)[:300]}"
+            )
+        else:
+            v        = data.get("data", {})
+            play_url = v.get("play") or v.get("hdplay")
+            size     = v.get("size", 0)
+
+            if not play_url:
+                error_detail = "TikWM response OK tapi link download tidak muncul (play/hdplay kosong)."
+            elif size == 0:
+                error_detail = "TikWM response OK, link ada, tapi size video = 0 bytes."
+
+    except requests.exceptions.Timeout:
+        error_detail = "Request ke TikWM timeout (>15 detik). Server mungkin lambat atau down."
+    except requests.exceptions.ConnectionError:
+        error_detail = "Gagal konek ke TikWM. Cek koneksi server atau TikWM sedang down."
+    except Exception as e:
+        error_detail = f"Error tidak terduga: {type(e).__name__}: {str(e)}"
+
+    now_str = _datetime.now().strftime("%d/%m/%Y %H:%M")
+
+    if error_detail:
+        logger.error(f"[DAILY] Health check GAGAL — {error_detail}")
+        analisis = _analisis_groq_daily(error_detail)
+        kirim_notif(
+            f"❌ Vinder Health Check GAGAL!\n"
+            f"🕒 {now_str}\n\n"
+            f"📋 Error:\n{error_detail}\n\n"
+            f"🤖 Analisis AI:\n{analisis}"
+        )
+    else:
+        logger.info("[DAILY] Health check PASSED — semua sistem normal.")
+        pesan_acak = _random.choice(_PESAN_SUKSES_DAILY)
+        kirim_notif(f"{pesan_acak}\n🕒 {now_str}")
+
+
+def _daily_health_loop():
+    """Background thread: startup AI ping sekali, lalu health check tiap jam 15:00."""
+    import time as _time
+    from datetime import datetime as _datetime, timedelta as _timedelta
+
+    _time.sleep(5)  # tunggu server ready dulu
+    _groq_startup_ping()  # test AI langsung saat server ON
+
+    while True:
+        now    = _datetime.now()
+        target = now.replace(hour=15, minute=0, second=0, microsecond=0)
+        if now >= target:
+            target += _timedelta(days=1)
+        wait_seconds = (target - now).total_seconds()
+        logger.info(f"[DAILY] Health check dijadwalkan dalam {int(wait_seconds//3600)}j {int((wait_seconds%3600)//60)}m")
+        _time.sleep(wait_seconds)
+        _run_daily_health_check()
+
 
 # =============================================================================
 # MAIN
 # =============================================================================
 
+def _self_ping_loop():
+    """Self-ping ke server sendiri tiap 4 menit supaya Railway tidak sleep."""
+    import time as _time
+    _time.sleep(60)  # tunggu server ready dulu
+    base = os.environ.get('RAILWAY_PUBLIC_DOMAIN') or os.environ.get('PUBLIC_URL')
+    if not base:
+        logger.info("[PING] RAILWAY_PUBLIC_DOMAIN tidak ditemukan, self-ping nonaktif.")
+        return
+    url = f"https://{base.rstrip('/')}/api/ping"
+    logger.info(f"[PING] Self-ping aktif → {url} setiap 4 menit")
+    first_ping = True
+    while True:
+        try:
+            requests.get(url, timeout=10)
+            logger.info("[PING] Self-ping OK")
+            if first_ping:
+                kirim_notif("📡 Self ping Active")
+                first_ping = False
+        except Exception as e:
+            logger.warning(f"[PING] Self-ping gagal: {e}")
+        _time.sleep(4 * 60)
+
 if __name__ == "__main__":
+    threading.Thread(target=_self_ping_loop, daemon=True).start()
+    threading.Thread(target=_daily_health_loop, daemon=True).start()
     kirim_notif("Sistem Vinder Berhasil ON di Railway!")
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, threaded=True)
